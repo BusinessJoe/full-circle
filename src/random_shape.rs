@@ -28,7 +28,7 @@ fn mutate_center(center: (i32, i32), rng: &mut rand::rngs::ThreadRng) -> (i32, i
 
 fn mutate_radius(radius: &i32, rng: &mut rand::rngs::ThreadRng) -> i32 {
     let drad = rng.gen_range(-20..=20);
-    radius + drad
+    cmp::max(radius + drad, 1)
 }
 
 fn mutate_color(color: &image::Rgb<u8>, rng: &mut rand::rngs::ThreadRng) -> image::Rgb<u8> {
