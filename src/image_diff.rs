@@ -1,6 +1,3 @@
-use image::GenericImageView;
-use std::env;
-
 pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
     assert!(a.dimensions() == b.dimensions(), "Images have different sizes");
 
