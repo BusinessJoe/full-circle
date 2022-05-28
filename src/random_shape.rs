@@ -1,6 +1,6 @@
+use image::Pixel;
 use rand::Rng;
 use std::cmp;
-use image::Pixel;
 
 pub trait RandomShape {
     fn draw(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage;
@@ -46,8 +46,8 @@ fn mutate_color(color: &image::Rgb<u8>, rng: &mut rand::rngs::ThreadRng) -> imag
 impl RandomShape for RandomCircle {
     fn draw(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage {
         let center = (
-            (self.center.0 as f32 * scale) as i32, 
-            (self.center.1 as f32 * scale) as i32
+            (self.center.0 as f32 * scale) as i32,
+            (self.center.1 as f32 * scale) as i32,
         );
         let radius = (self.radius as f32 * scale) as i32;
         imageproc::drawing::draw_filled_circle(image, center, radius, self.color)
@@ -77,13 +77,14 @@ impl RandomCircle {
         let mut rng = rand::thread_rng();
         let max_radius = cmp::max(simgx, simgy);
 
-        Self { 
-            imgx, imgy,
+        Self {
+            imgx,
+            imgy,
             center: (rng.gen_range(0..simgx), rng.gen_range(0..simgy)),
             radius: rng.gen_range(1..max_radius),
             color: image::Rgb([
-                rng.gen_range(0..=255), 
-                rng.gen_range(0..=255), 
+                rng.gen_range(0..=255),
+                rng.gen_range(0..=255),
                 rng.gen_range(0..=255),
             ]),
         }

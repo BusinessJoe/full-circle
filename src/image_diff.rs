@@ -1,5 +1,8 @@
 pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
-    assert!(a.dimensions() == b.dimensions(), "Images have different sizes");
+    assert!(
+        a.dimensions() == b.dimensions(),
+        "Images have different sizes"
+    );
 
     let sums = sums_chunked(a, b);
     sums.0 + sums.1 + sums.2
