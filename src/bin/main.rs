@@ -1,7 +1,8 @@
-use image::RgbImage;
 use std::vec::Vec;
 use std::path::Path;
-use std::env;
+
+use image::RgbImage;
+use clap::Parser;
 
 use wallpaper_evolution::{sort_generation, next_generation, image_diff};
 use wallpaper_evolution::random_shape::{RandomShape, RandomCircle};
@@ -54,13 +55,27 @@ fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str,
     outbuf.save(Path::new(output_folder).join("out.jpg")).expect("Could not save image");
 }
 
+#[derive(Parser, Debug)]
+#[clap()]
+struct Args {
+    #[clap(short, long)]
+    input_path: String,
+
+    #[clap(short, long)]
+    output_folder: String,
+
+    #[clap(short, long, default_value_t = 200)]
+    epochs: u32,
+
+    #[clap(short, long, default_value_t = 50)]
+    gens: u32,
+
+    #[clap(short, long)]
+    scale: f32,
+}
+
 fn main() {
-    let mut args = env::args();
-    let target_path = args.nth(1).unwrap();
-    let scale = args.next().unwrap();
-    let scale = match scale.parse() {
-        Ok(s) => s,
-        Err(_) => panic!("Could not parse {} as a scale", scale),
-    };
-    evolve(&target_path, 500, 80, "out", scale);
+    let args = Args::parse();
+
+    evolve(&args.input_path, args.epochs, args.gens, &args.output_folder, args.scale);
 }

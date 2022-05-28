@@ -9,6 +9,7 @@ edition = "2021"
 image = "0.24.2"
 imageproc = "0.23.0"
 rand = "0.8.5"
+clap = { version = "3.1.18", features = ["derive"] }
 
 [dev-dependencies]
 criterion = "0.3"
