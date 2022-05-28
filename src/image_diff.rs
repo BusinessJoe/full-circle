@@ -1,3 +1,4 @@
+#[must_use]
 pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
     assert!(
         a.dimensions() == b.dimensions(),

@@ -16,21 +16,25 @@ pub struct RandomCircle {
     color: image::Rgb<u8>,
 }
 
+#[must_use]
 fn clamp_channel(c: i32) -> u8 {
     cmp::max(0, cmp::min(255, c)) as u8
 }
 
+#[must_use]
 fn mutate_center(center: (i32, i32), rng: &mut rand::rngs::ThreadRng) -> (i32, i32) {
     let dc1 = rng.gen_range(-5..=5);
     let dc2 = rng.gen_range(-5..=5);
     (center.0 + dc1, center.1 + dc2)
 }
 
+#[must_use]
 fn mutate_radius(radius: &i32, rng: &mut rand::rngs::ThreadRng) -> i32 {
     let drad = rng.gen_range(-20..=20);
     cmp::max(radius + drad, 1)
 }
 
+#[must_use]
 fn mutate_color(color: &image::Rgb<u8>, rng: &mut rand::rngs::ThreadRng) -> image::Rgb<u8> {
     let dr = rng.gen_range(-20..=20);
     let dg = rng.gen_range(-20..=20);
@@ -44,6 +48,7 @@ fn mutate_color(color: &image::Rgb<u8>, rng: &mut rand::rngs::ThreadRng) -> imag
 }
 
 impl RandomShape for RandomCircle {
+    #[must_use]
     fn draw(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage {
         let center = (
             (self.center.0 as f32 * scale) as i32,
@@ -53,13 +58,14 @@ impl RandomShape for RandomCircle {
         imageproc::drawing::draw_filled_circle(image, center, radius, self.color)
     }
 
+    #[must_use]
     fn mutate(&self) -> Self {
         let mut rng = rand::thread_rng();
 
         let center = mutate_center(self.center, &mut rng);
         let color = mutate_color(&self.color, &mut rng);
         let radius = mutate_radius(&self.radius, &mut rng);
-        RandomCircle {
+        Self {
             imgx: self.imgx,
             imgy: self.imgy,
             center,

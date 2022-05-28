@@ -32,7 +32,7 @@ fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str,
             .map(|_| random_shape::RandomCircle::new(imgx, imgy))
             .collect();
 
-        for i in 0..num_gens {
+        for _i in 0..num_gens {
             shapes = next_generation(&scaled_target_img, &imgbuf, &shapes);
             //println!("Done generation {} of {}", i, NUM_GENS);
         }
