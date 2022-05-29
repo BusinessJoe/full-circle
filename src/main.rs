@@ -18,7 +18,7 @@ struct Args {
     gens: u32,
 
     #[clap(short, long)]
-    scale: f32,
+    scale: f64,
 }
 
 fn main() {

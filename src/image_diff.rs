@@ -1,8 +1,9 @@
 #[must_use]
 pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
-    debug_assert!(
+    assert!(
         a.dimensions() == b.dimensions(),
-        "Images have different sizes"
+        "Images have different sizes, {:?} != {:?}",
+        a.dimensions(), b.dimensions()
     );
 
     let sums = sums_chunked(a, b);
@@ -20,4 +21,17 @@ fn sums_chunked(samples_a: &[u8], samples_b: &[u8]) -> (i64, i64, i64) {
                 b + (i64::from(p_a[2]) - i64::from(p_b[2])).abs(),
             )
         })
+}
+
+mod tests {
+    use image::RgbImage;
+    use crate::image_diff::image_diff;
+    #[test]
+    fn test_diff_black_white() {
+        let (imgx, imgy) = (10, 20);
+        let black = RgbImage::new(imgx, imgy);
+        let white = RgbImage::from_fn(imgx, imgy, |x, y| image::Rgb([255,255,255]));
+
+        assert_eq!(image_diff(&black, &white), (imgx*imgy*255*3) as i64);
+    }
 }

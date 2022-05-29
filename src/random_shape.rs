@@ -2,9 +2,10 @@ use image::Pixel;
 use image::GenericImageView;
 use rand::Rng;
 use std::cmp;
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::image_diff::image_diff;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BoundingBox {
     pub x: u32,
     pub y: u32,
@@ -14,21 +15,23 @@ pub struct BoundingBox {
 
 pub trait RandomShape {
     #[must_use]
-    fn draw(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage;
+    fn draw(&self, image: &image::RgbImage, scale: f64) -> image::RgbImage;
 
     // Returns the same output as draw, but cropped to the bounding box returned by
     // get_bounds().
     #[must_use]
-    fn draw_subimage(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage;
+    fn draw_subimage(&self, image: &image::RgbImage, scale: f64) -> image::RgbImage;
 
     #[must_use]
     fn mutate(&self) -> Self;
 
     #[must_use]
-    fn get_bounds(&self) -> Option<BoundingBox>;
+    fn get_bounds(&self, scale: f64) -> Option<BoundingBox>;
 
+    // Calculates and returns how close the current image becomes to the target after this shape is
+    // drawn. Smaller scores are better.
     #[must_use]
-    fn score(&self, target_img: &image::RgbImage, current_img: &image::RgbImage) -> i64;
+    fn score(&self, target_img: &image::RgbImage, current_img: &image::RgbImage, prev_score: i64, scale: f64, save: bool) -> i64;
 }
 
 #[derive(Clone, Debug)]
@@ -54,7 +57,7 @@ fn mutate_center(center: (i32, i32), rng: &mut rand::rngs::ThreadRng) -> (i32, i
 
 #[must_use]
 fn mutate_radius(radius: i32, rng: &mut rand::rngs::ThreadRng) -> i32 {
-    let drad = rng.gen_range(-20..=20);
+    let drad = rng.gen_range(-20..=2);
     cmp::max(radius + drad, 1)
 }
 
@@ -72,23 +75,23 @@ fn mutate_color(color: image::Rgb<u8>, rng: &mut rand::rngs::ThreadRng) -> image
 }
 
 impl RandomShape for RandomCircle {
-    fn draw(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage {
+    fn draw(&self, image: &image::RgbImage, scale: f64) -> image::RgbImage {
         let center = (
-            (self.center.0 as f32 * scale) as i32,
-            (self.center.1 as f32 * scale) as i32,
+            (self.center.0 as f64 * scale) as i32,
+            (self.center.1 as f64 * scale) as i32,
         );
-        let radius = (self.radius as f32 * scale) as i32;
+        let radius = (self.radius as f64 * scale) as i32;
         imageproc::drawing::draw_filled_circle(image, center, radius, self.color)
     }
 
-    fn draw_subimage(&self, image: &image::RgbImage, scale: f32) -> image::RgbImage {
-        let bounds = self.get_bounds().unwrap();
+    fn draw_subimage(&self, image: &image::RgbImage, scale: f64) -> image::RgbImage {
+        let bounds = self.get_bounds(scale).unwrap();
         let image = image.view(bounds.x, bounds.y, bounds.width, bounds.height).to_image();
         let center = (
-            ((self.center.0 - bounds.x as i32) as f32 * scale) as i32,
-            ((self.center.1 - bounds.y as i32) as f32 * scale) as i32,
+            (self.center.0 as f64 * scale - bounds.x as f64) as i32,
+            (self.center.1 as f64 * scale - bounds.y as f64) as i32,
         );
-        let radius = (self.radius as f32 * scale) as i32;
+        let radius = (self.radius as f64 * scale) as i32;
         // Pass a reference to image, since the new value of image is no longer a reference.
         imageproc::drawing::draw_filled_circle(&image, center, radius, self.color)
     }
@@ -108,11 +111,11 @@ impl RandomShape for RandomCircle {
         }
     }
 
-    fn get_bounds(&self) -> Option<BoundingBox> {
-        let x = cmp::max(self.center.0 - self.radius, 0);
-        let y = cmp::max(self.center.1 - self.radius, 0);
-        let x2 = cmp::min(self.center.0 + self.radius, (self.imgx-1) as i32);
-        let y2 = cmp::min(self.center.1 + self.radius, (self.imgy-1) as i32);
+    fn get_bounds(&self, scale: f64) -> Option<BoundingBox> {
+        let x = cmp::max(self.center.0 - self.radius - 1, 0);
+        let y = cmp::max(self.center.1 - self.radius - 1, 0);
+        let x2 = cmp::min(self.center.0 + self.radius + 1, (self.imgx-1) as i32);
+        let y2 = cmp::min(self.center.1 + self.radius + 1, (self.imgy-1) as i32);
 
         // Return none if bounds are not contained within image.
         if x >= self.imgx.try_into().unwrap() || y >= self.imgy.try_into().unwrap() || x2 < 0 || y2 < 0 {
@@ -120,24 +123,26 @@ impl RandomShape for RandomCircle {
         }
 
         Some(BoundingBox {
-            x: x as u32,
-            y: y as u32,
-            width: (x2 - x).abs() as u32, //TODO: determine if and why this abs() is required
-            height: (y2 - y).abs() as u32,
+            x: (x as f64 * scale) as u32,
+            y: (y as f64 * scale) as u32,
+            width: ((x2 - x + 1) as f64 * scale) as u32,
+            height: ((y2 - y + 1) as f64 * scale) as u32,
         })
     }
 
-    fn score(&self, target_img: &image::RgbImage, current_img: &image::RgbImage) -> i64 {
+    fn score(&self, target_img: &image::RgbImage, current_img: &image::RgbImage, prev_score: i64, scale: f64, save: bool) -> i64 {
         let (imgx, imgy) = target_img.dimensions();
-        let bounds = match self.get_bounds() {
+        let bounds = match self.get_bounds(scale) {
             Some(b) => b,
-            None => return 0, // If the bounds lay outside the image, this shape does not change the image
+            None => return prev_score, // If the bounds lay outside the image, this shape does not change the image
         };
 
-        if bounds.width * bounds.height < imgx * imgy / 4 {
-            self.score_small(target_img, current_img)
+        // Compare the area of the bounding box to the area of the target image - if the bounding
+        // box is sufficiently small, use the scoring algorithm for smaller shapes.
+        if bounds.width * bounds.height < imgx * imgy / 4 || false {
+            self.score_small(target_img, current_img, prev_score, scale, save)
         } else {
-            self.score_large(target_img, current_img)
+            self.score_large(target_img, current_img, scale)
         }
     }
 }
@@ -167,24 +172,182 @@ impl RandomCircle {
     // We can use the bounds of the shape to crop the target and current image to a smaller area
     // where all the drawing and scoring can be done. This greatly improves performance on shapes
     // with smaller bounding boxes.
-    fn score_small(&self, target_img: &image::RgbImage, current_img: &image::RgbImage) -> i64 {
-        let bounds = self.get_bounds().unwrap();
+    fn score_small(&self, target_img: &image::RgbImage, current_img: &image::RgbImage, prev_score: i64, scale: f64, save: bool) -> i64 {
+        let bounds = self.get_bounds(scale).unwrap();
 
         let cropped_target = target_img.view(bounds.x, bounds.y, bounds.width, bounds.height).to_image();
         let cropped_current = current_img.view(bounds.x, bounds.y, bounds.width, bounds.height).to_image();
 
-        let new_img = self.draw_subimage(current_img, 1.0);
+        let new_img = self.draw_subimage(current_img, scale);
 
-        let prev_score = image_diff(&cropped_target, &cropped_current);
-        let new_score = image_diff(&cropped_target, &new_img);
-        new_score - prev_score
+        let prev_cropped_score = image_diff(&cropped_target, &cropped_current);
+        let new_cropped_score = image_diff(&cropped_target, &new_img);
+
+        if save {
+            let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+            let key = time.to_string() + "_" + &scale.to_string() + "_" + &prev_score.to_string();
+            cropped_target.save(String::from("out/") + &key + "_target.jpg");
+            cropped_current.save(String::from("out/") + &key + "_current.jpg");
+            new_img.save(String::from("out/") + &key + "_new.jpg");
+        }
+
+        prev_score + new_cropped_score - prev_cropped_score
     }
 
     // On shapes with large bounding boxes, it's best to avoid cropping and simply draw and score 
     // on the original target image.
-    fn score_large(&self, target_img: &image::RgbImage, current_img: &image::RgbImage) -> i64 {
-        let new_img = self.draw(current_img, 1.0);
+    fn score_large(&self, target_img: &image::RgbImage, current_img: &image::RgbImage, scale: f64) -> i64 {
+        let new_img = self.draw(current_img, scale);
         image_diff(target_img, &new_img)
     }
 
+}
+
+
+mod tests {
+    use std::iter;
+    use image::RgbImage;
+    use crate::RandomCircle;
+    use crate::random_shape::{RandomShape, BoundingBox, image_diff};
+
+    fn assert_scoring_equal(shape: &RandomCircle, target_img: &image::RgbImage, current_img: &image::RgbImage, prev_score: i64, scale: f64) {
+        match shape.get_bounds(scale) {
+            Some(_b) => {},
+            None => return,
+        };
+        let score_small = shape.score_small(target_img, current_img, prev_score, scale, true);
+        let score_large = shape.score_large(target_img, current_img, scale);
+        assert_eq!(score_small, score_large);
+    }
+
+    #[test]
+    fn test_scoring_algs_equal() {
+        let (imgx, imgy) = (50, 75);
+
+        // Create 1000 random shapes for testing 
+        let shapes = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
+            .take(1000);
+
+        let target_img = RgbImage::new(imgx, imgy);
+        let current_img = RgbImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        for shape in shapes {
+            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+        }
+    }
+
+    #[test]
+    fn test_scoring_algs_equal_scale_5() {
+        let (imgx, imgy) = (10, 15);
+        let scale = 5;
+
+        // Create 1000 random shapes for testing 
+        let shapes = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
+            .take(1000);
+
+        let target_img = RgbImage::new(imgx * scale, imgy * scale);
+        let current_img = RgbImage::new(imgx * scale, imgy * scale);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        assert_eq!(prev_score, 0);
+
+        for shape in shapes {
+            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, scale as f64);
+        }
+    }
+
+    #[test]
+    fn test_score_algs_equal_shape_outside_canvas() {
+        let (imgx, imgy) = (50, 75);
+
+        let target_img = RgbImage::new(imgx, imgy);
+        let current_img = RgbImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        let shape = RandomCircle {
+            imgx,
+            imgy,
+            center: (-100, -100),
+            radius: 1,
+            color: image::Rgb([255,255,255])
+        };
+        assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+    }
+
+    #[test]
+    fn test_shape_fills_canvas_bounds() {
+        let (imgx, imgy) = (50, 75);
+        
+        let shape = RandomCircle {
+            imgx,
+            imgy,
+            center: (100, 100),
+            radius: 1000,
+            color: image::Rgb([255,255,255])
+        };
+
+        let expected_bounds = BoundingBox {
+            x: 0,
+            y: 0,
+            width: imgx,
+            height: imgy,
+        };
+
+        assert_eq!(shape.get_bounds(1.0), Some(expected_bounds));
+    }
+
+    #[test]
+    fn test_score_small_shape_fills_canvas() {
+        let (imgx, imgy) = (50, 75);
+
+        let target_img = RgbImage::new(imgx, imgy);
+        let current_img = RgbImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        let shape = RandomCircle {
+            imgx,
+            imgy,
+            center: (100, 100),
+            radius: 1000,
+            color: image::Rgb([255,255,255])
+        };
+        assert_eq!(shape.score_small(&target_img, &current_img, prev_score, 1.0, false), (imgx*imgy*255*3) as i64);
+    }
+
+    #[test]
+    fn test_score_large_shape_fills_canvas() {
+        let (imgx, imgy) = (50, 75);
+
+        let target_img = RgbImage::new(imgx, imgy);
+        let current_img = RgbImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        let shape = RandomCircle {
+            imgx,
+            imgy,
+            center: (100, 100),
+            radius: 1000,
+            color: image::Rgb([255,255,255])
+        };
+        assert_eq!(shape.score_large(&target_img, &current_img, 1.0), (imgx*imgy*255*3) as i64);
+    }
+
+    #[test]
+    fn test_score_algs_equal_shape_fills_canvas() {
+        let (imgx, imgy) = (50, 75);
+
+        let target_img = RgbImage::new(imgx, imgy);
+        let current_img = RgbImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        let shape = RandomCircle {
+            imgx,
+            imgy,
+            center: (100, 100),
+            radius: 1000,
+            color: image::Rgb([255,255,255])
+        };
+        assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+    }
 }
