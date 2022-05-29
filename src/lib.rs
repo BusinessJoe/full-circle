@@ -2,9 +2,9 @@ use crate::random_shape::RandomCircle;
 use crate::random_shape::RandomShape;
 use std::iter;
 
+use crate::image_diff::image_diff;
 use image::RgbImage;
 use std::path::Path;
-use crate::image_diff::image_diff;
 
 pub mod image_diff;
 pub mod random_shape;
@@ -18,9 +18,7 @@ pub fn sort_generation(
     mut gen: Vec<RandomCircle>,
     prev_score: i64,
 ) -> Vec<RandomCircle> {
-    gen.sort_by_cached_key(|shape| {
-        shape.score(target_img, current_img, prev_score, 1.0, false)
-    });
+    gen.sort_by_cached_key(|shape| shape.score(target_img, current_img, prev_score, 1.0));
     gen
 }
 
@@ -70,7 +68,8 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
 
     for i in 1..=num_epochs {
         let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
-            .take(100).collect();
+            .take(100)
+            .collect();
 
         let scaled_score = image_diff(&scaled_target_img, &imgbuf);
         for _i in 0..num_gens {
@@ -80,11 +79,11 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
 
         let best_shape = shapes
             .iter()
-            .min_by_key(|shape| shape.score(&target_img, &outbuf, score, scale, false))
+            .min_by_key(|shape| shape.score(&target_img, &outbuf, score, scale))
             .unwrap();
 
         // Calculate the score for the current image at full scale.
-        let new_score = best_shape.score(&target_img, &outbuf, score, scale, false); 
+        let new_score = best_shape.score(&target_img, &outbuf, score, scale);
 
         println!("score diff {}", new_score - score);
 
@@ -98,7 +97,6 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
         } else {
             println!("Discarded epoch");
         }
-
 
         // Save the output buffer periodically.
         if i % 10 == 0 {
@@ -114,7 +112,3 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
         .save(Path::new(output_folder).join("out.jpg"))
         .expect("Could not save image");
 }
-
-
-
-
