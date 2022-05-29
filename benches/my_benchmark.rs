@@ -1,28 +1,37 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use std::iter;
+use std::time::Duration;
 use image::RgbImage;
-use wallpaper_evolution::next_generation;
-use wallpaper_evolution::random_shape;
-use wallpaper_evolution::random_shape::{RandomCircle, RandomShape};
+use wallpaper_evolution::{evolve, sort_generation};
+use wallpaper_evolution::random_shape::RandomCircle;
 
-fn generations(n: u64) {
-    let base_img = image::open("test.jpg").unwrap().to_rgb8();
-    let base_img =
-        image::imageops::resize(&base_img, 100, 100, image::imageops::FilterType::Nearest);
 
-    let (imgx, imgy) = base_img.dimensions();
-    let mut imgbuf = RgbImage::new(imgx, imgy);
+// Generate a population of 100 random circles with given radius
+fn randomize_generation(radius: i32, imgx: u32, imgy: u32) -> Vec<RandomCircle> {
+    iter::repeat_with(|| RandomCircle::new(imgx, imgy))
+        .map(|shape| RandomCircle { radius, ..shape })
+        .take(100).collect()
+}
 
-    let mut shapes: Vec<RandomCircle> = (0..100)
-        .map(|_| random_shape::RandomCircle::new(imgx, imgy))
-        .collect();
-
-    for i in 0..n {
-        shapes = next_generation(&base_img, &imgbuf, &shapes);
-    }
+fn bench_sort_generation(mut generation: Vec<RandomCircle>, target_img: &RgbImage, current_img: &RgbImage) {
+    generation = sort_generation(&target_img, &current_img, generation);
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("generations 10", |b| b.iter(|| generations(black_box(10))));
+    let target_img = image::open("rap.jpeg").unwrap().to_rgb8();
+    let (imgx, imgy) = target_img.dimensions();
+    let current_img = RgbImage::new(imgx, imgy);
+
+    let mut group = c.benchmark_group("evolution");
+    group.sample_size(50);
+    for i in [300, 200, 100, 75, 50, 25, 5].iter() {
+        group.bench_with_input(BenchmarkId::new("sort radius", i), i,
+            |b, i| {
+                let generation = randomize_generation(*i, imgx, imgy);
+                b.iter(|| bench_sort_generation(generation.clone(), &target_img, &current_img))
+            });
+    }
+    group.finish();
 }
 
 criterion_group!(benches, criterion_benchmark);
