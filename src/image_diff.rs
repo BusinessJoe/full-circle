@@ -1,5 +1,7 @@
+// TODO: image_diff can use bounds to avoid iterating over large parts of the image.
+// score_small might be able to use a subimage for the target image to avoid a copy
 #[must_use]
-pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
+pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> i64 {
     assert!(
         a.dimensions() == b.dimensions(),
         "Images have different sizes, {:?} != {:?}",
@@ -11,10 +13,11 @@ pub fn image_diff(a: &image::RgbImage, b: &image::RgbImage) -> i64 {
     sums.0 + sums.1 + sums.2
 }
 
+// Ignores alpha channel
 fn sums_chunked(samples_a: &[u8], samples_b: &[u8]) -> (i64, i64, i64) {
     samples_a
-        .chunks_exact(3)
-        .zip(samples_b.chunks_exact(3))
+        .chunks_exact(4)
+        .zip(samples_b.chunks_exact(4))
         .fold((0, 0, 0), |(r, g, b), (p_a, p_b)| {
             (
                 r + (i64::from(p_a[0]) - i64::from(p_b[0])).abs(),
