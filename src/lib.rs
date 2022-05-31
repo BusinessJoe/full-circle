@@ -46,6 +46,47 @@ pub fn next_generation(
     newvec
 }
 
+// Perform a single epoch, returning the best resulting shape and its corresponding score.
+// If no shape could be found which lowers the score, this function returns None.
+pub fn epoch(
+    generation_size: usize,
+    num_gens: u32,
+    target_img: &image::RgbImage,
+    current_img: &image::RgbImage,
+    scaled_target_img: &image::RgbImage,
+    scaled_current_img: &image::RgbImage,
+    scale: f64,
+    current_score: i64,
+) -> Option<(impl RandomShape, i64)> {
+    let (imgx, imgy) = scaled_target_img.dimensions();
+
+    let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
+        .take(generation_size)
+        .collect();
+
+    let scaled_score = image_diff(&scaled_target_img, &scaled_current_img);
+    for _i in 0..num_gens {
+        shapes = next_generation(&scaled_target_img, &scaled_current_img, &shapes, scaled_score);
+    }
+
+    let best_shape = shapes
+        .into_iter()
+        .min_by_key(|shape| shape.score(&target_img, &current_img, current_score, scale))
+        .unwrap();
+
+    // Calculate the score for the current image at full scale.
+    let new_score = best_shape.score(&target_img, &current_img, current_score, scale);
+
+    println!("score diff {}", new_score - current_score);
+
+    // Save the shape if it was an improvement
+    if new_score < current_score {
+        Some((best_shape, new_score))
+    } else {
+        None
+    }
+}
+
 pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str, scale: f64) {
     let target_img = image::open(input_path).unwrap().to_rgb8();
 
@@ -67,35 +108,24 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
     let mut imgbuf = RgbImage::new(imgx, imgy);
 
     for i in 1..=num_epochs {
-        let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
-            .take(100)
-            .collect();
-
-        let scaled_score = image_diff(&scaled_target_img, &imgbuf);
-        for _i in 0..num_gens {
-            shapes = next_generation(&scaled_target_img, &imgbuf, &shapes, scaled_score);
-            //println!("Done generation {} of {}", i, NUM_GENS);
-        }
-
-        let best_shape = shapes
-            .iter()
-            .min_by_key(|shape| shape.score(&target_img, &outbuf, score, scale))
-            .unwrap();
-
-        // Calculate the score for the current image at full scale.
-        let new_score = best_shape.score(&target_img, &outbuf, score, scale);
-
-        println!("score diff {}", new_score - score);
-
-        // Save the shape if it was an improvement
-        if new_score < score {
-            imgbuf = best_shape.draw(&imgbuf, 1.0);
-            score = new_score;
-
-            // Draw the unscaled shape to the output buffer.
-            outbuf = best_shape.draw(&outbuf, scale);
-        } else {
-            println!("Discarded epoch");
+        match epoch(
+            100,
+            num_gens,
+            &target_img,
+            &outbuf,
+            &scaled_target_img,
+            &imgbuf,
+            scale,
+            score
+        ) {
+            Some((best_shape, new_score)) => {
+                score = new_score;
+                outbuf = best_shape.draw(&outbuf, scale);
+                imgbuf = best_shape.draw(&imgbuf, 1.0);
+            },
+            None => {
+                println!("Discarded epoch");
+            }
         }
 
         // Save the output buffer periodically.
