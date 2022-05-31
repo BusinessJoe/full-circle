@@ -64,18 +64,18 @@ pub fn epoch(
         .take(generation_size)
         .collect();
 
-    let scaled_score = image_diff(&scaled_target_img, &scaled_current_img);
+    let scaled_score = image_diff(scaled_target_img, scaled_current_img);
     for _i in 0..num_gens {
-        shapes = next_generation(&scaled_target_img, &scaled_current_img, &shapes, scaled_score);
+        shapes = next_generation(scaled_target_img, scaled_current_img, &shapes, scaled_score);
     }
 
     let best_shape = shapes
         .into_iter()
-        .min_by_key(|shape| shape.score(&target_img, &current_img, current_score, scale))
+        .min_by_key(|shape| shape.score(target_img, current_img, current_score, scale))
         .unwrap();
 
     // Calculate the score for the current image at full scale.
-    let new_score = best_shape.score(&target_img, &current_img, current_score, scale);
+    let new_score = best_shape.score(target_img, current_img, current_score, scale);
 
     println!("score diff {}", new_score - current_score);
 
