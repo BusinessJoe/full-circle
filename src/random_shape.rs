@@ -1,6 +1,7 @@
 use crate::image_diff::image_diff;
-use image::GenericImageView;
-use image::Pixel;
+use image::{GenericImageView, GenericImage};
+use image::{Pixel, Rgba};
+use imageproc::drawing::BresenhamLineIter;
 use rand::Rng;
 use std::cmp;
 
@@ -34,7 +35,6 @@ pub trait RandomShape {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        prev_score: i64,
         scale: f64,
     ) -> i64;
 }
@@ -145,15 +145,16 @@ impl RandomShape for RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        prev_score: i64,
         scale: f64,
     ) -> i64 {
         let (imgx, imgy) = target_img.dimensions();
         let bounds = match self.get_bounds(scale) {
             Some(b) => b,
-            None => return prev_score, // If the bounds lay outside the image, this shape does not change the image
+            None => return 0, // If the bounds lay outside the image, this shape does not change the image
         };
+        self.score_bresenham(target_img, current_img, scale)
 
+        /*
         // Compare the area of the bounding box to the area of the target image - if the bounding
         // box is sufficiently small, use the scoring algorithm for smaller shapes.
         if bounds.width * bounds.height < imgx * imgy / 4 {
@@ -161,6 +162,7 @@ impl RandomShape for RandomCircle {
         } else {
             self.score_large(target_img, current_img, scale)
         }
+        */
     }
 }
 
@@ -225,6 +227,106 @@ impl RandomCircle {
         let new_img = self.draw(current_img, scale);
         image_diff(target_img, &new_img)
     }
+
+    fn pixel_diff(p1: &[u8], p2: &[u8]) -> i64 {
+        (i64::from(p1[0]) - i64::from(p2[0])).abs() +
+        (i64::from(p1[1]) - i64::from(p2[1])).abs() +
+        (i64::from(p1[2]) - i64::from(p2[2])).abs()
+    }
+
+    // Calculates the score difference after drawing a horizontal line across current_img.
+    fn score_diff_for_line_horizontal(
+        target_img: &image::RgbaImage,
+        current_img: &image::RgbaImage,
+        x0: i32,
+        x1: i32,
+        y: i32,
+        color: Rgba<u8>,
+    ) -> i64 {
+        let mut diff = 0i64;
+
+        let (width, height) = target_img.dimensions();
+        let in_bounds = |x, y| x >= 0 && x < width as i32 && y >= 0 && y < height as i32;
+
+        //let line_iterator = BresenhamLineIter::new((x0 as f32, y as f32), (x1 as f32, y as f32));
+
+        for x in x0..=x1 {
+            if in_bounds(x, y) {
+                let target_pixel = target_img.get_pixel(x as u32, y as u32);
+                let current_pixel = current_img.get_pixel(x as u32, y as u32);
+                diff += Self::pixel_diff(target_pixel.channels(), color.channels()) - Self::pixel_diff(target_pixel.channels(), current_pixel.channels());
+            }
+        }
+
+        diff
+    }
+
+    fn score_bresenham(
+        &self,
+        target_img: &image::RgbaImage,
+        current_img: &image::RgbaImage,
+        scale: f64,
+    ) -> i64 {
+        let mut diff = 0i64;
+
+        let mut error = (-self.radius as f64 * scale) as i32;
+        let mut x = (self.radius as f64 * scale) as i32; 
+        let mut y = 0;
+
+        while x >= y {
+            let last_y = y;
+            error += y;
+            y += 1;
+            error += y;
+
+            diff += Self::score_plot4points(
+                target_img, 
+                current_img, 
+                (self.center.0 as f64 * scale) as i32, 
+                (self.center.1 as f64 * scale) as i32, 
+                x, 
+                last_y, 
+                self.color,
+            );
+
+            if error >= 0 {
+                if x != last_y {
+                    diff += Self::score_plot4points(
+                        target_img, 
+                        current_img, 
+                        (self.center.0 as f64 * scale) as i32, 
+                        (self.center.1 as f64 * scale) as i32, 
+                        last_y, 
+                        x, 
+                        self.color,
+                    );
+                }
+
+                error -= x;
+                x -= 1;
+                error -= x;
+            }
+        }
+
+        diff
+    }
+
+    fn score_plot4points(
+        target_img: &image::RgbaImage,
+        current_img: &image::RgbaImage,
+        cx: i32,
+        cy: i32,
+        x: i32,
+        y: i32,
+        color: image::Rgba<u8>,
+    ) -> i64 {
+        let mut diff = 0i64;
+        diff += Self::score_diff_for_line_horizontal(target_img, current_img, cx - x, cx + x, cy + y, color);
+        if y != 0 {
+            diff += Self::score_diff_for_line_horizontal(target_img, current_img, cx - x, cx + x, cy - y, color);
+        }
+        diff
+    }
 }
 
 #[cfg(test)]
@@ -247,7 +349,13 @@ mod tests {
         };
         let score_small = shape.score_small(target_img, current_img, scale, prev_score);
         let score_large = shape.score_large(target_img, current_img, scale);
+        let score_bresenham = shape.score_bresenham(target_img, current_img, scale);
         assert_eq!(score_small, score_large);
+
+        // The Bresenham algorithm isn't exactly the same as the others - we're happy with it being
+        // within a 10% margin.
+        assert!((score_small - score_bresenham).abs() as f64 / (score_small as f64) < 0.10, "{} !~= {}", score_small, score_bresenham);
+        
     }
 
     #[test]
@@ -256,6 +364,27 @@ mod tests {
 
         // Create 1000 random shapes for testing
         let shapes = iter::repeat_with(|| RandomCircle::new(imgx, imgy)).take(1000);
+
+        let target_img = RgbaImage::new(imgx, imgy);
+        let current_img = RgbaImage::new(imgx, imgy);
+        let prev_score = image_diff(&target_img, &current_img);
+
+        for shape in shapes {
+            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+        }
+    }
+
+    #[test]
+    fn test_scoring_algs_equal_single_point() {
+        let (imgx, imgy) = (5, 7);
+
+        // Create 1000 random shapes for testing
+        let shapes = iter::repeat_with(|| RandomCircle {
+            center: (2,3),
+            radius: 0,
+            color: image::Rgba([10,10,10,255]),
+            ..RandomCircle::new(imgx, imgy)
+        }).take(1000);
 
         let target_img = RgbaImage::new(imgx, imgy);
         let current_img = RgbaImage::new(imgx, imgy);

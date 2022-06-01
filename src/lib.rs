@@ -186,9 +186,8 @@ pub fn sort_generation(
     target_img: &image::RgbaImage,
     current_img: &image::RgbaImage,
     mut gen: Vec<RandomCircle>,
-    prev_score: i64,
 ) -> Vec<RandomCircle> {
-    gen.sort_by_cached_key(|shape| shape.score(target_img, current_img, prev_score, 1.0));
+    gen.sort_by_cached_key(|shape| shape.score(target_img, current_img, 1.0));
     gen
 }
 
@@ -199,12 +198,11 @@ pub fn next_generation(
     target_img: &image::RgbaImage,
     current_img: &image::RgbaImage,
     current_gen: &[RandomCircle],
-    prev_score: i64,
 ) -> Vec<RandomCircle> {
     let (imgx, imgy) = target_img.dimensions();
     let mut newvec = current_gen.to_vec();
 
-    newvec = sort_generation(target_img, current_img, newvec, prev_score);
+    newvec = sort_generation(target_img, current_img, newvec);
     // Kill worst 80 shapes and replace them with mutated children of the survivors.
     newvec.truncate(20);
     let children: Vec<RandomCircle> = newvec
@@ -236,16 +234,16 @@ pub fn epoch(
 
     let scaled_score = image_diff(scaled_target_img, scaled_current_img);
     for _i in 0..num_gens {
-        shapes = next_generation(scaled_target_img, scaled_current_img, &shapes, scaled_score);
+        shapes = next_generation(scaled_target_img, scaled_current_img, &shapes);
     }
 
     let best_shape = shapes
         .into_iter()
-        .min_by_key(|shape| shape.score(target_img, current_img, current_score, scale))
+        .min_by_key(|shape| shape.score(target_img, current_img, scale))
         .unwrap();
 
     // Calculate the score for the current image at full scale.
-    let new_score = best_shape.score(target_img, current_img, current_score, scale);
+    let new_score = best_shape.score(target_img, current_img,  scale);
 
     println!("score diff {}", new_score - current_score);
 

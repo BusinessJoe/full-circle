@@ -9,33 +9,30 @@ pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> i64 {
         b.dimensions()
     );
 
-    let sums = sums_chunked(a, b);
-    sums.0 + sums.1 + sums.2
+    sum_chunked(a, b)
 }
 
 // Ignores alpha channel
-fn sums_chunked(samples_a: &[u8], samples_b: &[u8]) -> (i64, i64, i64) {
+fn sum_chunked(samples_a: &[u8], samples_b: &[u8]) -> i64 {
     samples_a
         .chunks_exact(4)
         .zip(samples_b.chunks_exact(4))
-        .fold((0, 0, 0), |(r, g, b), (p_a, p_b)| {
-            (
-                r + (i64::from(p_a[0]) - i64::from(p_b[0])).abs(),
-                g + (i64::from(p_a[1]) - i64::from(p_b[1])).abs(),
-                b + (i64::from(p_a[2]) - i64::from(p_b[2])).abs(),
-            )
+        .fold(0, | sum, (p_a, p_b)| {
+            sum + (i64::from(p_a[0]) - i64::from(p_b[0])).abs()
+            + (i64::from(p_a[1]) - i64::from(p_b[1])).abs()
+            + (i64::from(p_a[2]) - i64::from(p_b[2])).abs()
         })
 }
 
 #[cfg(test)]
 mod tests {
     use crate::image_diff::image_diff;
-    use image::RgbImage;
+    use image::RgbaImage;
     #[test]
     fn test_diff_black_white() {
         let (imgx, imgy) = (10, 20);
-        let black = RgbImage::new(imgx, imgy);
-        let white = RgbImage::from_fn(imgx, imgy, |_x, _y| image::Rgb([255, 255, 255]));
+        let black = RgbaImage::from_fn(imgx, imgy, |_x, _y| image::Rgba([0, 0, 0, 255]));
+        let white = RgbaImage::from_fn(imgx, imgy, |_x, _y| image::Rgba([255, 255, 255, 255]));
 
         assert_eq!(image_diff(&black, &white), (imgx * imgy * 255 * 3) as i64);
     }
