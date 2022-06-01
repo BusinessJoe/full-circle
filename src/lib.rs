@@ -229,10 +229,9 @@ pub fn epoch(
     let (imgx, imgy) = scaled_target_img.dimensions();
 
     let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
-        .take(generation_size)
+        .take(100)
         .collect();
 
-    let scaled_score = image_diff(scaled_target_img, scaled_current_img);
     for _i in 0..num_gens {
         shapes = next_generation(scaled_target_img, scaled_current_img, &shapes);
     }
@@ -243,7 +242,7 @@ pub fn epoch(
         .unwrap();
 
     // Calculate the score for the current image at full scale.
-    let new_score = best_shape.score(target_img, current_img,  scale);
+    let new_score = current_score + best_shape.score(target_img, current_img,  scale);
 
     println!("score diff {}", new_score - current_score);
 
