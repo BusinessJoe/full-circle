@@ -17,33 +17,58 @@ async function init_wasm_in_worker() {
     // Load the wasm file by awaiting the Promise returned by `wasm_bindgen`.
     await wasm_bindgen("./pkg/wallpaper_evolution_bg.wasm");
 
-    await TestStruct.new_async("/public/evil_jerma.jpg")
-        .then(struct => {
-            console.log("loaded async!");
-            test_struct = struct;
+    console.log("among");
 
-            // Set callback to handle messages passed to the worker.
-            self.onmessage = async event => {
-                console.log(test_struct, event.data);
-                let best_circle = test_struct.try_epoch(100, event.data);
-                console.log("circle before", best_circle, best_circle.imgx)
+    // Set callback to handle messages passed to the worker.
+    self.onmessage = async event => {
+        const { type, payload } = event.data;
+        console.log("processing event", type);
 
-                // Send response back to be handled by callback in main thread.
-                self.postMessage({
-                    imgx: best_circle.imgx,
-                    imgy: best_circle.imgy,
-                    center_x: best_circle.center_x,
-                    center_y: best_circle.center_y,
-                    radius: best_circle.radius,
-                    color: best_circle.color,
-                });
-            };
+        switch (type) {
+            case "init/url":
+                const url = payload;
+                await TestStruct.new_async(url)
+                    .then(struct => {
+                        console.log("loaded async!");
+                        test_struct = struct;
+                        self.postMessage({ type: "init/done" });
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        self.postMessage({ type: "init/error" });
+                    });
+                break;
+            case "epoch":
+                const { gen_size, num_gens } = payload;
+                let best_circle = test_struct.try_epoch(gen_size, num_gens);
 
-        });
+                if (best_circle) {
+                    // Send response back to be handled by callback in main thread.
+                    self.postMessage({
+                        type: "epoch/done",
+                        payload: {
+                            imgx: best_circle.imgx,
+                            imgy: best_circle.imgy,
+                            center_x: best_circle.center_x,
+                            center_y: best_circle.center_y,
+                            radius: best_circle.radius,
+                            color: best_circle.color,
+                        }
+                    });
+                } else {
+                    self.postMessage({
+                        type: "epoch/done",
+                        payload: undefined
+                    });
+                }
+                break;
+            default:
+                console.error(`action type '${type}' not recognized`);
+                break;
+        }
+    };
+
+    self.postMessage({ type: "ready" });
 };
-
-// Create a new object of the `NumberEval` struct.
-//var num_eval = NumberEval.new();
-
 
 init_wasm_in_worker();

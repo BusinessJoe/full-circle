@@ -17,16 +17,16 @@ fn sum_chunked(samples_a: &[u8], samples_b: &[u8]) -> i64 {
     samples_a
         .chunks_exact(4)
         .zip(samples_b.chunks_exact(4))
-        .fold(0, | sum, (p_a, p_b)| {
+        .fold(0, |sum, (p_a, p_b)| {
             sum + (i64::from(p_a[0]) - i64::from(p_b[0])).abs()
-            + (i64::from(p_a[1]) - i64::from(p_b[1])).abs()
-            + (i64::from(p_a[2]) - i64::from(p_b[2])).abs()
+                + (i64::from(p_a[1]) - i64::from(p_b[1])).abs()
+                + (i64::from(p_a[2]) - i64::from(p_b[2])).abs()
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::image_diff::image_diff;
+    use crate::shape_evolution::image_diff::image_diff;
     use image::RgbaImage;
     #[test]
     fn test_diff_black_white() {

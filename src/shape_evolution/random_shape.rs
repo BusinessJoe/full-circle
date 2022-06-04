@@ -1,7 +1,6 @@
-use crate::image_diff::image_diff;
-use image::{GenericImageView, GenericImage};
+use crate::shape_evolution::image_diff::image_diff;
+use image::GenericImageView;
 use image::{Pixel, Rgba};
-use imageproc::drawing::BresenhamLineIter;
 use rand::Rng;
 use std::cmp;
 
@@ -229,9 +228,9 @@ impl RandomCircle {
     }
 
     fn pixel_diff(p1: &[u8], p2: &[u8]) -> i64 {
-        (i64::from(p1[0]) - i64::from(p2[0])).abs() +
-        (i64::from(p1[1]) - i64::from(p2[1])).abs() +
-        (i64::from(p1[2]) - i64::from(p2[2])).abs()
+        (i64::from(p1[0]) - i64::from(p2[0])).abs()
+            + (i64::from(p1[1]) - i64::from(p2[1])).abs()
+            + (i64::from(p1[2]) - i64::from(p2[2])).abs()
     }
 
     // Calculates the score difference after drawing a horizontal line across current_img.
@@ -254,7 +253,8 @@ impl RandomCircle {
             if in_bounds(x, y) {
                 let target_pixel = target_img.get_pixel(x as u32, y as u32);
                 let current_pixel = current_img.get_pixel(x as u32, y as u32);
-                diff += Self::pixel_diff(target_pixel.channels(), color.channels()) - Self::pixel_diff(target_pixel.channels(), current_pixel.channels());
+                diff += Self::pixel_diff(target_pixel.channels(), color.channels())
+                    - Self::pixel_diff(target_pixel.channels(), current_pixel.channels());
             }
         }
 
@@ -270,7 +270,7 @@ impl RandomCircle {
         let mut diff = 0i64;
 
         let mut error = (-self.radius as f64 * scale) as i32;
-        let mut x = (self.radius as f64 * scale) as i32; 
+        let mut x = (self.radius as f64 * scale) as i32;
         let mut y = 0;
 
         while x >= y {
@@ -280,24 +280,24 @@ impl RandomCircle {
             error += y;
 
             diff += Self::score_plot4points(
-                target_img, 
-                current_img, 
-                (self.center.0 as f64 * scale) as i32, 
-                (self.center.1 as f64 * scale) as i32, 
-                x, 
-                last_y, 
+                target_img,
+                current_img,
+                (self.center.0 as f64 * scale) as i32,
+                (self.center.1 as f64 * scale) as i32,
+                x,
+                last_y,
                 self.color,
             );
 
             if error >= 0 {
                 if x != last_y {
                     diff += Self::score_plot4points(
-                        target_img, 
-                        current_img, 
-                        (self.center.0 as f64 * scale) as i32, 
-                        (self.center.1 as f64 * scale) as i32, 
-                        last_y, 
-                        x, 
+                        target_img,
+                        current_img,
+                        (self.center.0 as f64 * scale) as i32,
+                        (self.center.1 as f64 * scale) as i32,
+                        last_y,
+                        x,
                         self.color,
                     );
                 }
@@ -321,9 +321,23 @@ impl RandomCircle {
         color: image::Rgba<u8>,
     ) -> i64 {
         let mut diff = 0i64;
-        diff += Self::score_diff_for_line_horizontal(target_img, current_img, cx - x, cx + x, cy + y, color);
+        diff += Self::score_diff_for_line_horizontal(
+            target_img,
+            current_img,
+            cx - x,
+            cx + x,
+            cy + y,
+            color,
+        );
         if y != 0 {
-            diff += Self::score_diff_for_line_horizontal(target_img, current_img, cx - x, cx + x, cy - y, color);
+            diff += Self::score_diff_for_line_horizontal(
+                target_img,
+                current_img,
+                cx - x,
+                cx + x,
+                cy - y,
+                color,
+            );
         }
         diff
     }
@@ -331,8 +345,8 @@ impl RandomCircle {
 
 #[cfg(test)]
 mod tests {
-    use crate::random_shape::{image_diff, BoundingBox, RandomShape};
-    use crate::RandomCircle;
+    use crate::shape_evolution::image_diff::image_diff;
+    use crate::shape_evolution::random_shape::{BoundingBox, RandomCircle, RandomShape};
     use image::RgbaImage;
     use std::iter;
 
@@ -354,8 +368,12 @@ mod tests {
 
         // The Bresenham algorithm isn't exactly the same as the others - we're happy with it being
         // within a 10% margin.
-        assert!((score_small - score_bresenham).abs() as f64 / (score_small as f64) < 0.10, "{} !~= {}", score_small, score_bresenham);
-        
+        assert!(
+            (score_small - score_bresenham).abs() as f64 / (score_small as f64) < 0.10,
+            "{} !~= {}",
+            score_small,
+            score_bresenham
+        );
     }
 
     #[test]
@@ -380,11 +398,12 @@ mod tests {
 
         // Create 1000 random shapes for testing
         let shapes = iter::repeat_with(|| RandomCircle {
-            center: (2,3),
+            center: (2, 3),
             radius: 0,
-            color: image::Rgba([10,10,10,255]),
+            color: image::Rgba([10, 10, 10, 255]),
             ..RandomCircle::new(imgx, imgy)
-        }).take(1000);
+        })
+        .take(1000);
 
         let target_img = RgbaImage::new(imgx, imgy);
         let current_img = RgbaImage::new(imgx, imgy);

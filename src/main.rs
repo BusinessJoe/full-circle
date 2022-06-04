@@ -1,6 +1,6 @@
 use clap::Parser;
-
-use wallpaper_evolution::evolve;
+mod shape_evolution;
+use shape_evolution::evolve;
 
 #[derive(Parser, Debug)]
 #[clap()]
@@ -24,7 +24,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    evolve(
+    evolve::evolve(
         &args.input_path,
         args.epochs,
         args.gens,

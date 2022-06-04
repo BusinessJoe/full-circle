@@ -41,7 +41,13 @@ features = [
   'RequestInit',
   'RequestMode',
   'Response',
-  'Window',
+  'Document',
+  'Worker',
+  'WorkerGlobalScope',
+  'console',
+  'HtmlButtonElement',
+  'HtmlElement',
+  'MessageEvent',
 ]
 
 [[bench]]
