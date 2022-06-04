@@ -31,7 +31,10 @@ async function init_wasm_in_worker() {
                     .then(struct => {
                         console.log("loaded async!");
                         test_struct = struct;
-                        self.postMessage({ type: "init/done" });
+                        self.postMessage({
+                            type: "init/done",
+                            payload: [test_struct.get_target_width(), test_struct.get_target_height()]
+                        });
                     })
                     .catch(err => {
                         console.error(err);

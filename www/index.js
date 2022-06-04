@@ -12,19 +12,24 @@ async function run() {
     const worker = new Worker("worker.js");
     worker.onmessage = function (e) {
         const { type, payload } = e.data;
+        console.log("processing event", type);
         switch (type) {
             case "ready":
                 const url = "/public/evil_jerma.jpg";
                 worker.postMessage({ type: "init/url", payload: url });
                 break;
             case "init/done":
+                const [width, height] = payload;
+                console.log(width, height);
+                canvas.width = width;
+                canvas.height = height;
                 epochBtn.disabled = false;
                 break;
             case "epoch/done":
                 const circle = payload;
                 if (circle) {
-                    const scale_x = canvas.clientWidth / circle.imgx;
-                    const scale_y = canvas.clientHeight / circle.imgy;
+                    const scale_x = canvas.width / circle.imgx;
+                    const scale_y = canvas.height / circle.imgy;
                     ctx.fillStyle = circle.color;
                     ctx.beginPath();
                     ctx.ellipse(
@@ -40,7 +45,7 @@ async function run() {
                 } else {
                     console.log("No circle found");
                 }
-                worker.postMessage({ type: "epoch", payload: { num_gens: 1 } });
+                worker.postMessage({ type: "epoch", payload: { num_gens: 20 } });
                 break;
             default:
                 console.error(`action type '${type}' not recognized`);
@@ -50,7 +55,7 @@ async function run() {
 
     epochBtn.addEventListener("click", () => {
         console.log("starting epoch");
-        worker.postMessage({ type: "epoch", payload: { num_gens: 1 } });
+        worker.postMessage({ type: "epoch", payload: { num_gens: 20 } });
         //console.log(struct.try_epoch(100, 50));
         //struct.draw(ctx);
     });

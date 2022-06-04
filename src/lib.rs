@@ -112,4 +112,12 @@ impl TestStruct {
             }
         }
     }
+
+    pub fn get_target_width(&self) -> u32 {
+        self.target_img.width()
+    }
+
+    pub fn get_target_height(&self) -> u32 {
+        self.target_img.height()
+    }
 }
