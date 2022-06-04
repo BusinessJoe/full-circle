@@ -27,7 +27,12 @@ pub struct JsRandomCircle {
 impl JsRandomCircle {
     #[wasm_bindgen(getter)]
     pub fn color(&self) -> String {
-        format!("#{:x}{:x}{:x}", self.color[0], self.color[1], self.color[2])
+        // This returns a hex representation of the color which is compatable with CSS.
+        // The {:02x} format converts each u8 to a 2-digit hex string.
+        format!(
+            "#{:02x}{:02x}{:02x}",
+            self.color[0], self.color[1], self.color[2]
+        )
     }
 }
 
@@ -72,12 +77,12 @@ impl TestStruct {
         }
     }
 
-    pub fn draw(&self, ctx: &CanvasRenderingContext2d) -> Result<(), JsValue> {
+    pub fn get_image_data(&self) -> Result<JsValue, JsValue> {
         let (width, height) = self.current_img.dimensions();
         let mut data = self.current_img.to_vec();
 
         let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&mut data), width, height)?;
-        ctx.put_image_data(&data, 0.0, 0.0)
+        Ok(JsValue::from(data))
     }
 
     pub fn try_epoch(&mut self, generation_size: usize, num_gens: u32) -> Option<JsRandomCircle> {
