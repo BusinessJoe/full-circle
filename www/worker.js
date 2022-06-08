@@ -1,7 +1,7 @@
 // The worker has its own scope and no direct access to functions/objects of the
 // global scope. We import the generated JS file to make `wasm_bindgen`
 // available which we need to initialize our WASM code.
-importScripts("./pkg/wallpaper_evolution.js");
+importScripts("./pkg/wasm.js");
 
 console.log("Initializing worker")
 
@@ -15,7 +15,7 @@ let test_struct;
 
 async function init_wasm_in_worker() {
     // Load the wasm file by awaiting the Promise returned by `wasm_bindgen`.
-    await wasm_bindgen("./pkg/wallpaper_evolution_bg.wasm");
+    await wasm_bindgen("./pkg/wasm_bg.wasm");
 
     console.log("among");
 
@@ -41,8 +41,18 @@ async function init_wasm_in_worker() {
                         self.postMessage({ type: "init/error" });
                     });
                 break;
+            case "init/buffer":
+                const buffer = payload;
+                test_struct = TestStruct.new_from_buffer(buffer);
+                console.log("loaded from buffer!");
+                self.postMessage({
+                    type: "init/done",
+                    payload: [test_struct.get_target_width(), test_struct.get_target_height()]
+                });
+                break;
             case "epoch":
                 const { gen_size, num_gens } = payload;
+                console.log(gen_size, num_gens);
                 let best_circle = test_struct.try_epoch(gen_size, num_gens);
 
                 if (best_circle) {
@@ -50,12 +60,14 @@ async function init_wasm_in_worker() {
                     self.postMessage({
                         type: "epoch/done",
                         payload: {
-                            imgx: best_circle.imgx,
-                            imgy: best_circle.imgy,
-                            center_x: best_circle.center_x,
-                            center_y: best_circle.center_y,
-                            radius: best_circle.radius,
-                            color: best_circle.color,
+                            circle: {
+                                imgx: best_circle.imgx,
+                                imgy: best_circle.imgy,
+                                center: best_circle.center,
+                                radius: best_circle.radius,
+                                color: best_circle.color,
+                            },
+                            image_data: test_struct.get_image_data(),
                         }
                     });
                 } else {

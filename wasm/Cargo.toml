@@ -1,0 +1,34 @@
+[package]
+name = "wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+shape-evolution = { path = "../shape-evolution" }
+wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4.30"
+js-sys = "0.3.57"
+image = "0.24.2"
+serde = {version = "1.0", features = ["derive"] }
+
+[dependencies.web-sys]
+version = "0.3.4"
+features = [
+  'ImageData',
+  'CanvasRenderingContext2d',
+  'Headers',
+  'Request',
+  'RequestInit',
+  'RequestMode',
+  'Response',
+  'Document',
+  'Worker',
+  'WorkerGlobalScope',
+  'console',
+  'HtmlButtonElement',
+  'HtmlElement',
+  'MessageEvent',
+]

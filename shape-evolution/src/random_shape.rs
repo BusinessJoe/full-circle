@@ -1,8 +1,16 @@
-use crate::shape_evolution::image_diff::image_diff;
 use image::GenericImageView;
 use image::{Pixel, Rgba};
+use crate::image_diff::image_diff;
 use rand::Rng;
 use std::cmp;
+use serde::{
+    ser::{Serializer, SerializeTuple},
+    de::{Deserializer},
+    Serialize, Deserialize
+};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub struct BoundingBox {
@@ -38,13 +46,76 @@ pub trait RandomShape {
     ) -> i64;
 }
 
-#[derive(Clone, Debug)]
+
+// Serializer and deserializer for an Rgba<u8> struct. Used by RandomCircle for its color field.
+fn serialize_rgba<S>(color: &image::Rgba<u8>, ser: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    let mut tup = ser.serialize_tuple(4)?;
+    tup.serialize_element(&color[0])?;
+    tup.serialize_element(&color[1])?;
+    tup.serialize_element(&color[2])?;
+    tup.serialize_element(&color[3])?;
+    tup.end()
+}
+fn deserialize_rgba<'de, D>(de: D) -> Result<image::Rgba<u8>, D::Error> where D: Deserializer<'de> {
+    let tup: (u8, u8, u8, u8) = Deserialize::deserialize(de)?;
+    Ok(image::Rgba([tup.0, tup.1, tup.2, tup.3]))
+}
+
+// RandomCircle definition for wasm.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RandomCircle {
+    pub imgx: u32,
+    pub imgy: u32,
+
+    #[wasm_bindgen(skip)]
+    pub center: (i32, i32),
+
+    pub radius: i32,
+    
+    #[wasm_bindgen(skip)]
+    #[serde(serialize_with = "serialize_rgba", deserialize_with = "deserialize_rgba")]
+    pub color: image::Rgba<u8>,
+}
+
+// RandomCircle definition not for wasm.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RandomCircle {
     pub imgx: u32,
     pub imgy: u32,
     pub center: (i32, i32),
     pub radius: i32,
+    #[serde(serialize_with = "serialize_rgba", deserialize_with = "deserialize_rgba")]
     pub color: image::Rgba<u8>,
+}
+
+// Wasm impl
+#[cfg(target_arch = "wasm32")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl RandomCircle {
+    #[wasm_bindgen(getter)]
+    pub fn center(&self) -> js_sys::Int32Array {
+        js_sys::Int32Array::from(&[self.center.0, self.center.1][..])
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_center(&mut self, center: &[i32]) {
+        self.center = (center[0], center[1]);
+    }
+    #[wasm_bindgen(getter)]
+    pub fn color(&self) -> js_sys::Uint8Array {
+        js_sys::Uint8Array::from(&[
+            self.color[0],
+            self.color[1],
+            self.color[2],
+            self.color[3],
+        ][..])
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_color(&mut self, color: &[u8]) {
+        self.color = image::Rgba([color[0], color[1], color[2], color[3]]);
+    }
 }
 
 #[must_use]

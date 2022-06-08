@@ -40,3 +40,13 @@ pub async fn load_image(url: &str) -> Result<image::RgbaImage, JsValue> {
         Err(e) => Err(JsValue::from_str(&e.to_string())),
     }
 }
+
+pub fn load_image_from_buffer(buffer: &ArrayBuffer) -> Result<image::RgbaImage, JsValue> {
+    let array = Uint8Array::new(buffer);
+    let bytes: Vec<u8> = array.to_vec();
+
+    match image::load_from_memory(&bytes) {
+        Ok(dyn_image) => Ok(dyn_image.into_rgba8()),
+        Err(e) => Err(JsValue::from_str(&e.to_string())),
+    }
+}

@@ -1,5 +1,4 @@
 use clap::Parser;
-mod shape_evolution;
 use shape_evolution::evolve;
 
 #[derive(Parser, Debug)]

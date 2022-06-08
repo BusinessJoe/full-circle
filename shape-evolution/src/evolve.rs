@@ -1,5 +1,5 @@
-use crate::shape_evolution::random_shape::{RandomCircle, RandomShape};
 use image::RgbaImage;
+use crate::random_shape::{RandomCircle, RandomShape};
 use std::iter;
 use std::path::Path;
 
@@ -62,7 +62,7 @@ pub fn epoch(
 
     let best_shape = shapes
         .into_iter()
-        .min_by_key(|shape| shape.score(target_img, current_img, scale))
+        .min_by_key(|shape| shape.score(scaled_target_img, scaled_current_img, 1.0))
         .unwrap();
 
     // Calculate the score for the current image at full scale.
