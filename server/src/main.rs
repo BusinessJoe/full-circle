@@ -1,26 +1,13 @@
 use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::reply::json;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
 use shape_evolution::random_shape::{RandomCircle};
-
-/// Our global unique user id counter.
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
-
-/// Our state of currently connected users.
-///
-/// - Key is their id
-/// - Value is a sender of `warp::ws::Message`
-type Users = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Message>>>>;
 
 pub struct Player {
     player_id: String,
@@ -28,6 +15,10 @@ pub struct Player {
     sender: mpsc::UnboundedSender<Message>,
 }
 
+/// Our state of currently connected users.
+///
+/// - Key is their id
+/// - Value is a `Player` struct, which contains a sender of `warp::ws::Message`
 type Players = Arc<RwLock<HashMap<String, Player>>>;
 
 #[tokio::main]

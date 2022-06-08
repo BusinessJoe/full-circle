@@ -217,11 +217,9 @@ impl RandomShape for RandomCircle {
         current_img: &image::RgbaImage,
         scale: f64,
     ) -> i64 {
-        let (imgx, imgy) = target_img.dimensions();
-        let bounds = match self.get_bounds(scale) {
-            Some(b) => b,
-            None => return 0, // If the bounds lay outside the image, this shape does not change the image
-        };
+        if self.get_bounds(scale) == None {
+            return 0 // If the bounds lay outside the image, this shape does not change the image
+        }
         self.score_bresenham(target_img, current_img, scale)
 
         /*

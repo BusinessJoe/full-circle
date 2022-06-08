@@ -47,7 +47,7 @@ async function run() {
     const ctx = canvas.getContext('2d');
 
     const epochBtn = document.getElementById('epoch');
-    epochBtn.disabled = true;
+    //epochBtn.disabled = true;
 
     document.getElementById('file-input')
         .addEventListener('change', readSingleFile, false);
@@ -58,7 +58,7 @@ async function run() {
         console.log("processing event", type);
         switch (type) {
             case "ready":
-                const url = "/public/slowpoke.jpg";
+                const url = "/public/moon.jpeg";
                 worker.postMessage({ type: "init/url", payload: url });
                 break;
             case "init/done":
