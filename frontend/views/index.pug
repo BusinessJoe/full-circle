@@ -1,0 +1,12 @@
+extends layout
+
+block content
+  script(src="js/pkg/wasm.js")
+  script(src="js/bootstrap.js")
+  h1= title
+  a(id="room-link")
+    h1(id="room-link-text")
+  div(class="controls")
+    button(class="button-primary" id="epoch") Start
+    input(type="file" id="file-input")
+  canvas(id="drawing")
