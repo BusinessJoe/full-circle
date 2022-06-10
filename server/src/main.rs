@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use futures_util::{SinkExt, StreamExt, TryFutureExt, stream::SplitStream};
+use futures_util::{StreamExt, stream::SplitStream};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
@@ -9,6 +9,8 @@ use warp::Filter;
 use rand::{Rng, distributions::Alphanumeric};
 
 use shape_evolution::random_shape::{RandomCircle};
+
+mod res;
 
 pub struct Player {
     player_id: String,
@@ -90,14 +92,22 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
         }
         );
 
-    println!("New room: {}", room_id);
+    println!("New room: {}", &room_id);
 
     // Split the socket into a sender and receiver of messages.
-    let (client_ws_sender, mut client_ws_rcv) = ws.split();
+    let (client_ws_sender, client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
-    let mut client_rcv = UnboundedReceiverStream::new(client_rcv);
+    let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
     tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
+
+    client_sender.send(Message::text(
+        serde_json::to_string(&res::Event {
+            topic: String::from("room-link"),
+            payload: format!("/join/{}/", &room_id),
+        }).unwrap()
+    )).expect("Error sending room_id");
+
     //tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
     //    if let Err(e) = result {
     //        eprintln!("error sending websocket msg: {}", e);
@@ -108,34 +118,25 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
     let room = rooms_read.get(&room_id).unwrap();
     let new_player = Player::new(true, client_sender);
 
-    connect_player(new_player, &room, client_ws_rcv).await;
+    connect_player(new_player, room, client_ws_rcv).await;
 }
 
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     // First check that the provided room id matches an existing room.
     if let Some(room) = rooms.read().await.get(&room_id) {
         // Split the socket into a sender and receiver of messages.
-        let (mut client_ws_sender, mut client_ws_rcv) = ws.split();
+        let (client_ws_sender, client_ws_rcv) = ws.split();
         let (client_sender, client_rcv) = mpsc::unbounded_channel();
-        let mut client_rcv = UnboundedReceiverStream::new(client_rcv);
+        let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
-        tokio::task::spawn(async move {
-            while let Some(message) = client_rcv.next().await {
-                client_ws_sender
-                    .send(message)
-                    .unwrap_or_else(|e| {
-                        eprintln!("websocket send error: {}", e);
-                    })
-                .await;
-            }
-        });
+        tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
 
         let player = Player::new(false, client_sender);
 
-        connect_player(player, &room, client_ws_rcv).await;
+        connect_player(player, room, client_ws_rcv).await;
     } else {
         println!("Rejecting connection to: {}", room_id);
-        ws.close().await;
+        ws.close().await.expect("Error rejecting connection");
     }
 }
 
@@ -158,12 +159,12 @@ async fn connect_player(player: Player, room: &Room, mut client_ws_rcv: SplitStr
                 break;
             }
         };
-        user_message(&player_id, msg, &room).await;
+        user_message(&player_id, msg, room).await;
     }
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&player_id, &room).await;
+    user_disconnected(&player_id, room).await;
 }
 
 async fn user_message(my_id: &str, msg: Message, room: &Room) {
@@ -174,19 +175,20 @@ async fn user_message(my_id: &str, msg: Message, room: &Room) {
         return;
     };
 
-    let new_msg = match serde_json::from_str::<RandomCircle>(msg) {
-        Ok(circle) => serde_json::to_string(&circle).unwrap(),
+    let new_event = match serde_json::from_str::<res::Event<RandomCircle>>(msg) {
+        Ok(event) => event,
         Err(e) => {
             println!("{:?}", e);
-            String::from("Error parsing circle")
+            return;
         }
     };
+    let new_message = serde_json::to_string(&new_event).unwrap();
 
     let players = &room.players;
 
     // New message from this user, send it to everyone...
     for p in players.read().await.iter() {
-        if let Err(_disconnected) = p.sender.send(Message::text(&new_msg)) {
+        if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
             // The tx is disconnected, our `user_disconnected` code
             // should be happening in another task, nothing more to
             // do here.
@@ -203,7 +205,7 @@ async fn user_disconnected(my_id: &str, room: &Room) {
 
     let mut i = 0;
     while i < players.len() {
-        if &mut players[i].player_id == my_id {
+        if players[i].player_id == my_id {
             players.remove(i);
         } else {
             i += 1;

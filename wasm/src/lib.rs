@@ -1,12 +1,9 @@
 use image::RgbaImage;
 
 use js_sys::ArrayBuffer;
-use js_sys::Uint8Array;
-use serde::Deserialize;
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::Clamped;
-use web_sys::{console, CanvasRenderingContext2d, ImageData};
+use web_sys::{console, ImageData};
 
 use shape_evolution::evolve::epoch;
 use shape_evolution::random_shape::{RandomCircle, RandomShape};
@@ -87,9 +84,9 @@ impl TestStruct {
 
     pub fn get_image_data(&self) -> Result<JsValue, JsValue> {
         let (width, height) = self.current_img.dimensions();
-        let mut data = self.current_img.to_vec();
+        let data = self.current_img.to_vec();
 
-        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&mut data), width, height)?;
+        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&data), width, height)?;
         Ok(JsValue::from(data))
     }
 

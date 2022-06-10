@@ -6,7 +6,25 @@ const uri = 'ws://' + location.hostname + ':3001' + '/room';
 console.log(uri);
 const ws = new WebSocket(uri);
 ws.onopen = () => {console.log("Websocket opened");};
-ws.onmessage = (message) => drawCircle(JSON.parse(message.data));
+ws.onmessage = (message) => {
+    console.log(JSON.parse(message.data));
+    const { topic, payload } = JSON.parse(message.data);
+    switch (topic) {
+        case "circle":
+            drawCircle(payload);
+            break;
+        case "room-link":
+            const link_elem = document.getElementById("room-link");
+            const link_text_elem = document.getElementById("room-link-text");
+
+            const link = location.host + payload;
+
+            link_elem.href = link;
+            link_text_elem.innerHTML = link;
+            break;
+    }
+    console.log('received', message.data);
+};
 
 function readSingleFile(e) {
     let file = e.target.files[0];
@@ -76,7 +94,7 @@ async function run() {
                     circle.center = Array.from(circle.center);
                     circle.color = Array.from(circle.color);
 
-                    const message = JSON.stringify(circle);
+                    const message = JSON.stringify({topic: "circle", payload: circle});
                     console.log(circle);
                     console.log(message);
                     ws.send(message);
