@@ -33,6 +33,7 @@ type Players = Arc<RwLock<Vec<Player>>>;
 pub struct Room {
     room_id: String,
     players: Players,
+    image_dimensions: Option<(u32, u32)>,
 }
 
 type Rooms = Arc<RwLock<HashMap<String, Room>>>;
@@ -89,6 +90,7 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
         Room {
             room_id: room_id.clone(),
             players: Players::default(),
+            image_dimensions: None,
         }
         );
 
@@ -114,40 +116,55 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
     //    }
     //}));
 
-    let rooms_read = rooms.read().await;
-    let room = rooms_read.get(&room_id).unwrap();
     let new_player = Player::new(true, client_sender);
 
-    connect_player(new_player, room, client_ws_rcv).await;
+    connect_player(new_player, rooms, room_id, client_ws_rcv).await;
 }
 
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     // First check that the provided room id matches an existing room.
-    if let Some(room) = rooms.read().await.get(&room_id) {
-        // Split the socket into a sender and receiver of messages.
-        let (client_ws_sender, client_ws_rcv) = ws.split();
-        let (client_sender, client_rcv) = mpsc::unbounded_channel();
-        let client_rcv = UnboundedReceiverStream::new(client_rcv);
+    //if let Some(mut room) = rooms.read().await.get(&room_id) {
+    
+    // Split the socket into a sender and receiver of messages.
+    let (client_ws_sender, client_ws_rcv) = ws.split();
+    let (client_sender, client_rcv) = mpsc::unbounded_channel();
+    let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
-        tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
+    tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
 
-        let player = Player::new(false, client_sender);
-
-        connect_player(player, room, client_ws_rcv).await;
-    } else {
-        println!("Rejecting connection to: {}", room_id);
-        ws.close().await.expect("Error rejecting connection");
+    {
+        let rooms = rooms.read().await;
+        let room = rooms.get(&room_id).unwrap();
+        if let Some(dimensions) = room.image_dimensions {
+            client_sender.send(Message::text(
+                serde_json::to_string(&res::Event {
+                    topic: String::from("new-image"),
+                    payload: res::NewImage { dimensions }
+                }).unwrap()
+            )).expect("Error sending new-image");
+        }
     }
+
+    let player = Player::new(false, client_sender);
+
+    connect_player(player, rooms, room_id, client_ws_rcv).await;
+
+    //} else {
+    //    println!("Rejecting connection to: {}", room_id);
+    //    ws.close().await.expect("Error rejecting connection");
+    //}
 }
 
-async fn connect_player(player: Player, room: &Room, mut client_ws_rcv: SplitStream<WebSocket>) {
+async fn connect_player(player: Player, rooms: Rooms, room_id: String, mut client_ws_rcv: SplitStream<WebSocket>) {
     let player_id = player.player_id.clone();
     {
+        let rooms = rooms.read().await;
+        let room = rooms.get(&room_id).unwrap();
         let mut players = room.players.write().await;
         players.push(player);
+        println!("Player {} joined room {}", &player_id, &room.room_id);
     }
 
-    println!("Player {} joined room {}", &player_id, &room.room_id);
 
     // Every time the user sends a message, broadcast it to
     // all other users...
@@ -159,15 +176,15 @@ async fn connect_player(player: Player, room: &Room, mut client_ws_rcv: SplitStr
                 break;
             }
         };
-        user_message(&player_id, msg, room).await;
+        user_message(&player_id, msg, &rooms, &room_id).await;
     }
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&player_id, room).await;
+    user_disconnected(&player_id, &rooms, &room_id).await;
 }
 
-async fn user_message(my_id: &str, msg: Message, room: &Room) {
+async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
     // Skip any non-Text messages...
     let msg = if let Ok(s) = msg.to_str() {
         s
@@ -175,28 +192,38 @@ async fn user_message(my_id: &str, msg: Message, room: &Room) {
         return;
     };
 
-    let new_event = match serde_json::from_str::<res::Event<RandomCircle>>(msg) {
-        Ok(event) => event,
-        Err(e) => {
-            println!("{:?}", e);
-            return;
-        }
-    };
-    let new_message = serde_json::to_string(&new_event).unwrap();
+    if let Ok(event) = serde_json::from_str::<res::Event<RandomCircle>>(msg) {
+        let new_message = serde_json::to_string(&event).unwrap();
 
-    let players = &room.players;
-
-    // New message from this user, send it to everyone...
-    for p in players.read().await.iter() {
-        if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
-            // The tx is disconnected, our `user_disconnected` code
-            // should be happening in another task, nothing more to
-            // do here.
+        // Send circle to all players
+        let rooms = rooms.read().await;
+        let room = rooms.get(room_id).unwrap();
+        let players = &room.players;
+        for p in players.read().await.iter() {
+            if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
+                // The tx is disconnected, our `user_disconnected` code
+                // should be happening in another task, nothing more to
+                // do here.
+            }
         }
     }
+    else if let Ok(event) = serde_json::from_str::<res::Event<res::NewImage>>(msg) {
+        let dims = event.payload.dimensions;
+ 
+        let mut rooms = rooms.write().await;
+        let mut room = rooms.get_mut(room_id).unwrap();
+        room.image_dimensions = Some(dims);
+    }
+    else {
+        eprintln!("Failed to deserialize message");
+        return;
+    }
+
 }
 
-async fn user_disconnected(my_id: &str, room: &Room) {
+async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
+    let rooms = rooms.read().await;
+    let room = rooms.get(room_id).unwrap();
     eprintln!("good bye player: {}", my_id);
 
     // Stream closed up, so remove from the user list.

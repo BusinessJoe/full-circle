@@ -22,6 +22,12 @@ ws.onmessage = (message) => {
             link_elem.href = link;
             link_text_elem.innerHTML = link;
             break;
+        case "new-image":
+            const canvas = document.getElementById('drawing');
+            const [width, height] = payload.dimensions;
+            canvas.width = width;
+            canvas.height = height;
+            break;
     }
     console.log('received', message.data);
 };
@@ -83,6 +89,12 @@ async function run() {
             case "init/done":
                 const [width, height] = payload;
                 console.log(width, height);
+                ws.send(JSON.stringify({
+                    topic: "new-image",
+                    payload: {
+                        dimensions: [width, height]
+                    }
+                }));
                 canvas.width = width;
                 canvas.height = height;
                 epochBtn.disabled = false;
