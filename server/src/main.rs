@@ -1,26 +1,33 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use futures_util::{StreamExt, stream::SplitStream};
+use futures_util::{stream::SplitStream, StreamExt};
+use rand::{distributions::Alphanumeric, Rng};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
-use rand::{Rng, distributions::Alphanumeric};
-
-use shape_evolution::random_shape::{RandomCircle};
 
 mod res;
+use res::WsEvent;
 
-pub struct Player {
-    player_id: String,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PlayerInfo {
+    id: String,
     is_host: bool,
+}
+pub struct Player {
+    info: PlayerInfo,
     sender: mpsc::UnboundedSender<Message>,
 }
 impl Player {
     pub fn new(is_host: bool, sender: mpsc::UnboundedSender<Message>) -> Self {
-        let player_id = uuid::Uuid::new_v4().to_string();
-        Player {player_id, is_host, sender}
+        let id = uuid::Uuid::new_v4().to_string();
+        Player {
+            info: PlayerInfo { id, is_host },
+            sender,
+        }
     }
 }
 
@@ -91,8 +98,8 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
             room_id: room_id.clone(),
             players: Players::default(),
             image_dimensions: None,
-        }
-        );
+        },
+    );
 
     println!("New room: {}", &room_id);
 
@@ -103,18 +110,11 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
 
     tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
 
-    client_sender.send(Message::text(
-        serde_json::to_string(&res::Event {
-            topic: String::from("room-link"),
-            payload: format!("/join/{}/", &room_id),
-        }).unwrap()
-    )).expect("Error sending room_id");
-
-    //tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-    //    if let Err(e) = result {
-    //        eprintln!("error sending websocket msg: {}", e);
-    //    }
-    //}));
+    client_sender
+        .send(Message::text(
+            serde_json::to_string(&res::WsEvent::RoomPath(format!("/join/{}/", &room_id))).unwrap(),
+        ))
+        .expect("Error sending room_id");
 
     let new_player = Player::new(true, client_sender);
 
@@ -124,7 +124,7 @@ async fn host_connected(ws: WebSocket, rooms: Rooms) {
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     // First check that the provided room id matches an existing room.
     //if let Some(mut room) = rooms.read().await.get(&room_id) {
-    
+
     // Split the socket into a sender and receiver of messages.
     let (client_ws_sender, client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
@@ -136,12 +136,11 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
         let rooms = rooms.read().await;
         let room = rooms.get(&room_id).unwrap();
         if let Some(dimensions) = room.image_dimensions {
-            client_sender.send(Message::text(
-                serde_json::to_string(&res::Event {
-                    topic: String::from("new-image"),
-                    payload: res::NewImage { dimensions }
-                }).unwrap()
-            )).expect("Error sending new-image");
+            client_sender
+                .send(Message::text(
+                    serde_json::to_string(&res::WsEvent::NewImage { dimensions }).unwrap(),
+                ))
+                .expect("Error sending new-image");
         }
     }
 
@@ -155,8 +154,13 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     //}
 }
 
-async fn connect_player(player: Player, rooms: Rooms, room_id: String, mut client_ws_rcv: SplitStream<WebSocket>) {
-    let player_id = player.player_id.clone();
+async fn connect_player(
+    player: Player,
+    rooms: Rooms,
+    room_id: String,
+    mut client_ws_rcv: SplitStream<WebSocket>,
+) {
+    let player_id = player.info.id.clone();
     {
         let rooms = rooms.read().await;
         let room = rooms.get(&room_id).unwrap();
@@ -164,7 +168,6 @@ async fn connect_player(player: Player, rooms: Rooms, room_id: String, mut clien
         players.push(player);
         println!("Player {} joined room {}", &player_id, &room.room_id);
     }
-
 
     // Every time the user sends a message, broadcast it to
     // all other users...
@@ -192,33 +195,36 @@ async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
         return;
     };
 
-    if let Ok(event) = serde_json::from_str::<res::Event<RandomCircle>>(msg) {
-        let new_message = serde_json::to_string(&event).unwrap();
+    match serde_json::from_str::<WsEvent>(msg) {
+        Ok(event) => match event {
+            WsEvent::Circle(_) => {
+                let new_message = serde_json::to_string(&event).unwrap();
 
-        // Send circle to all players
-        let rooms = rooms.read().await;
-        let room = rooms.get(room_id).unwrap();
-        let players = &room.players;
-        for p in players.read().await.iter() {
-            if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
-                // The tx is disconnected, our `user_disconnected` code
-                // should be happening in another task, nothing more to
-                // do here.
+                // Send circle to all players
+                let rooms = rooms.read().await;
+                let room = rooms.get(room_id).unwrap();
+                let players = &room.players;
+                for p in players.read().await.iter() {
+                    if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
+                        // The tx is disconnected, our `user_disconnected` code
+                        // should be happening in another task, nothing more to
+                        // do here.
+                    }
+                }
             }
+            WsEvent::NewImage { dimensions } => {
+                let mut rooms = rooms.write().await;
+                let mut room = rooms.get_mut(room_id).unwrap();
+                room.image_dimensions = Some(dimensions);
+            }
+            _ => {
+                eprintln!("Unsupported message type");
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to deserialize message {:?}", e);
         }
     }
-    else if let Ok(event) = serde_json::from_str::<res::Event<res::NewImage>>(msg) {
-        let dims = event.payload.dimensions;
- 
-        let mut rooms = rooms.write().await;
-        let mut room = rooms.get_mut(room_id).unwrap();
-        room.image_dimensions = Some(dims);
-    }
-    else {
-        eprintln!("Failed to deserialize message");
-        return;
-    }
-
 }
 
 async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
@@ -233,7 +239,7 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
 
         let mut i = 0;
         while i < players.len() {
-            if players[i].player_id == my_id {
+            if players[i].info.id == my_id {
                 players.remove(i);
             } else {
                 i += 1;
@@ -245,7 +251,7 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
 
     if delete_room {
         let mut rooms = rooms.write().await;
-        let room_id = { 
+        let room_id = {
             let room = rooms.get(room_id).unwrap();
             room.room_id.clone()
         };
@@ -253,4 +259,3 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
         rooms.remove(&room_id);
     }
 }
-

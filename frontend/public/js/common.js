@@ -32,12 +32,14 @@ function initWebsocket(uri) {
     ws.onopen = () => {console.log("Websocket opened");};
     ws.onmessage = (message) => {
         console.log(JSON.parse(message.data));
-        const { topic, payload } = JSON.parse(message.data);
-        switch (topic) {
-            case "circle":
+        const data = JSON.parse(message.data);
+        const type = Object.keys(data)[0];
+        const payload = data[type];
+        switch (type) {
+            case "Circle":
                 drawCircle(payload);
                 break;
-            case "room-link":
+            case "RoomPath":
                 const link_elem = document.getElementById("room-link");
                 const link_text_elem = document.getElementById("room-link-text");
 
@@ -46,7 +48,7 @@ function initWebsocket(uri) {
                 link_elem.href = link;
                 link_text_elem.innerHTML = link;
                 break;
-            case "new-image":
+            case "NewImage":
                 const [width, height] = payload.dimensions;
                 canvas.width = width;
                 canvas.height = height;
@@ -58,7 +60,13 @@ function initWebsocket(uri) {
     return ws;
 }
 
+function sendWsEvent(ws, type, payload) {
+    const message = JSON.stringify({ [type]: payload });
+    ws.send(message);
+}
+
 module.exports = {
     drawCircle, 
-    initWebsocket
+    initWebsocket,
+    sendWsEvent,
 };

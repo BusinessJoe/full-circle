@@ -1,4 +1,4 @@
-const {drawCircle, initWebsocket} = require('./common.js');
+const { drawCircle, initWebsocket, sendWsEvent } = require('./common.js');
 const { TestStruct } = wasm_bindgen;
 
 function readSingleFile(e) {
@@ -30,12 +30,7 @@ async function initWebWorker(ws) {
             case "init/done":
                 const [width, height] = payload;
                 console.log(width, height);
-                ws.send(JSON.stringify({
-                    topic: "new-image",
-                    payload: {
-                        dimensions: [width, height]
-                    }
-                }));
+                sendWsEvent(we, "NewImage", { dimensions: [width, height] });
                 canvas.width = width;
                 canvas.height = height;
                 epochBtn.disabled = false;
@@ -47,10 +42,10 @@ async function initWebWorker(ws) {
                     circle.center = Array.from(circle.center);
                     circle.color = Array.from(circle.color);
 
-                    const message = JSON.stringify({topic: "circle", payload: circle});
+                    const message = JSON.stringify({"Circle": circle});
                     console.log(circle);
                     console.log(message);
-                    ws.send(message);
+                    sendWsEvent(ws, "Circle", circle);
                 } else {
                     console.log("No circle found");
                 }

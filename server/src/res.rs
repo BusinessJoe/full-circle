@@ -1,13 +1,11 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use crate::PlayerInfo;
+use serde::{Deserialize, Serialize};
 use shape_evolution::random_shape;
 
 #[derive(Serialize, Deserialize)]
-pub struct Event<T> {
-    pub topic: String,
-    pub payload: T,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct NewImage {
-    pub dimensions: (u32, u32)
+pub enum WsEvent {
+    Circle(random_shape::RandomCircle),
+    NewImage { dimensions: (u32, u32) },
+    RoomPath(String),
+    PlayerList(Vec<PlayerInfo>),
 }
