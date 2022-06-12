@@ -222,21 +222,35 @@ async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
 }
 
 async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
-    let rooms = rooms.read().await;
-    let room = rooms.get(room_id).unwrap();
-    eprintln!("good bye player: {}", my_id);
+    let delete_room = {
+        let rooms = rooms.read().await;
+        let room = rooms.get(room_id).unwrap();
+        eprintln!("good bye player: {}", my_id);
 
-    // Stream closed up, so remove from the user list.
-    // Acquire write lock. The lock will be dropped on function end.
-    let mut players = room.players.write().await;
+        // Stream closed up, so remove from the user list.
+        // Acquire write lock. The lock will be dropped on function end.
+        let mut players = room.players.write().await;
 
-    let mut i = 0;
-    while i < players.len() {
-        if players[i].player_id == my_id {
-            players.remove(i);
-        } else {
-            i += 1;
+        let mut i = 0;
+        while i < players.len() {
+            if players[i].player_id == my_id {
+                players.remove(i);
+            } else {
+                i += 1;
+            }
         }
+
+        players.is_empty()
+    };
+
+    if delete_room {
+        let mut rooms = rooms.write().await;
+        let room_id = { 
+            let room = rooms.get(room_id).unwrap();
+            room.room_id.clone()
+        };
+        eprintln!("deleting room {}", &room_id);
+        rooms.remove(&room_id);
     }
 }
 
