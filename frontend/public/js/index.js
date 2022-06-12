@@ -1,36 +1,5 @@
+const {drawCircle, initWebsocket} = require('./common.js');
 const { TestStruct } = wasm_bindgen;
-
-let worker;
-
-const uri = 'ws://' + location.hostname + ':3001' + '/room';
-console.log(uri);
-const ws = new WebSocket(uri);
-ws.onopen = () => {console.log("Websocket opened");};
-ws.onmessage = (message) => {
-    console.log(JSON.parse(message.data));
-    const { topic, payload } = JSON.parse(message.data);
-    switch (topic) {
-        case "circle":
-            drawCircle(payload);
-            break;
-        case "room-link":
-            const link_elem = document.getElementById("room-link");
-            const link_text_elem = document.getElementById("room-link-text");
-
-            const link = location.host + payload;
-
-            link_elem.href = link;
-            link_text_elem.innerHTML = link;
-            break;
-        case "new-image":
-            const canvas = document.getElementById('drawing');
-            const [width, height] = payload.dimensions;
-            canvas.width = width;
-            canvas.height = height;
-            break;
-    }
-    console.log('received', message.data);
-};
 
 function readSingleFile(e) {
     let file = e.target.files[0];
@@ -43,41 +12,13 @@ function readSingleFile(e) {
     });
 }
 
-function drawCircle(circle) {
+async function initWebWorker(ws) {
     const canvas = document.getElementById('drawing');
-    const ctx = canvas.getContext('2d');
+    const epochBtn = document.getElementById('epoch');
 
-    const { imgx, imgy, center, radius, color } = circle;
-
-    const scale_x = canvas.width / imgx;
-    const scale_y = canvas.height / imgy;
-    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${color[3]/255}`;
-    ctx.beginPath();
-    ctx.ellipse(
-        center[0] * scale_x,
-        center[1] * scale_y,
-        radius * scale_x,
-        radius * scale_y,
-        0,
-        0,
-        2 * Math.PI
-    );
-    ctx.fill();
-}
-
-async function run() {
     await wasm_bindgen('js/pkg/wasm_bg.wasm');
 
-    const canvas = document.getElementById('drawing');
-    const ctx = canvas.getContext('2d');
-
-    const epochBtn = document.getElementById('epoch');
-    //epochBtn.disabled = true;
-
-    document.getElementById('file-input')
-        .addEventListener('change', readSingleFile, false);
-
-    worker = new Worker("js/worker.js");
+    let worker = new Worker("js/worker.js");
     worker.onmessage = function (e) {
         const { type, payload } = e.data;
         console.log("processing event", type);
@@ -121,13 +62,31 @@ async function run() {
         }
     }
 
+    return worker;
+}
+
+async function run() {
+    await wasm_bindgen('js/pkg/wasm_bg.wasm');
+
+    const canvas = document.getElementById('drawing');
+    const ctx = canvas.getContext('2d');
+
+    const epochBtn = document.getElementById('epoch');
+
+    const uri = 'ws://' + location.hostname + ':3001' + '/room';
+    const ws = initWebsocket(uri);
+
+    document.getElementById('file-input')
+        .addEventListener('change', readSingleFile, false);
+
+    let worker = await initWebWorker(ws);
+
     epochBtn.addEventListener("click", () => {
         console.log("starting epoch");
         worker.postMessage({ type: "epoch", payload: { num_gens: 25, gen_size: 100 } });
         //console.log(struct.try_epoch(100, 50));
         //struct.draw(ctx);
     });
-
 }
 
 run();
