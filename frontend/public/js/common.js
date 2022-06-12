@@ -31,7 +31,7 @@ function initWebsocket(uri) {
 
     ws.onopen = () => {console.log("Websocket opened");};
     ws.onmessage = (message) => {
-        console.log(JSON.parse(message.data));
+        console.log('received from ws:', JSON.parse(message.data));
         const data = JSON.parse(message.data);
         const type = Object.keys(data)[0];
         const payload = data[type];
@@ -53,8 +53,16 @@ function initWebsocket(uri) {
                 canvas.width = width;
                 canvas.height = height;
                 break;
+            case "PlayerList":
+                console.log(payload);
+                for (let player of payload) {
+                    console.log(player.id);
+                }
+                break;
+            default:
+                console.error(`Type ${type} not recognized`);
+                break;
         }
-        console.log('received', message.data);
     };
 
     return ws;

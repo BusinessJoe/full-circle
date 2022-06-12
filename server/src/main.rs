@@ -147,11 +147,6 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     let player = Player::new(false, client_sender);
 
     connect_player(player, rooms, room_id, client_ws_rcv).await;
-
-    //} else {
-    //    println!("Rejecting connection to: {}", room_id);
-    //    ws.close().await.expect("Error rejecting connection");
-    //}
 }
 
 async fn connect_player(
@@ -164,9 +159,12 @@ async fn connect_player(
     {
         let rooms = rooms.read().await;
         let room = rooms.get(&room_id).unwrap();
-        let mut players = room.players.write().await;
-        players.push(player);
+        {
+            let mut players = room.players.write().await;
+            players.push(player);
+        }
         println!("Player {} joined room {}", &player_id, &room.room_id);
+        broadcast_player_list(room).await;
     }
 
     // Every time the user sends a message, broadcast it to
@@ -198,19 +196,11 @@ async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
     match serde_json::from_str::<WsEvent>(msg) {
         Ok(event) => match event {
             WsEvent::Circle(_) => {
-                let new_message = serde_json::to_string(&event).unwrap();
-
                 // Send circle to all players
                 let rooms = rooms.read().await;
                 let room = rooms.get(room_id).unwrap();
-                let players = &room.players;
-                for p in players.read().await.iter() {
-                    if let Err(_disconnected) = p.sender.send(Message::text(&new_message)) {
-                        // The tx is disconnected, our `user_disconnected` code
-                        // should be happening in another task, nothing more to
-                        // do here.
-                    }
-                }
+
+                broadcast_ws_event(event, room).await;
             }
             WsEvent::NewImage { dimensions } => {
                 let mut rooms = rooms.write().await;
@@ -257,5 +247,28 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
         };
         eprintln!("deleting room {}", &room_id);
         rooms.remove(&room_id);
+    } else {
+        let rooms = rooms.read().await;
+        let room = rooms.get(room_id).unwrap();
+        broadcast_player_list(room).await;
     }
+}
+
+async fn broadcast_ws_event(event: WsEvent, room: &Room) {
+    let message = serde_json::to_string(&event).unwrap();
+    let players = room.players.read().await;
+    for p in players.iter() {
+        if let Err(_disconnected) = p.sender.send(Message::text(&message)) {
+            // The tx is disconnected, our `user_disconnected` code
+            // should be happening in another task, nothing more to
+            // do here.
+        }
+    }
+}
+
+async fn broadcast_player_list(room: &Room) {
+    let players = room.players.read().await;
+    let player_list = WsEvent::PlayerList(players.iter().map(|p| p.info.clone()).collect());
+
+    broadcast_ws_event(player_list, room).await;
 }

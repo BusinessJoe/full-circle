@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node ./bin/www",
-    "watch": "concurrently \"watchify --debug ./public/js/index.js -o ./public/bundle/index.bundle.js\" \"watchify --debug ./public/js/join.js -o ./public/bundle/join.bundle.js\""
+    "build": "browserify --debug ./public/js/index.js -o ./public/bundle/index.bundle.js && browserify --debug ./public/js/join.js -o ./public/bundle/join.bundle.js"
   },
   "dependencies": {
     "cookie-parser": "~1.4.4",

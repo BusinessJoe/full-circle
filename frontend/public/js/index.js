@@ -21,7 +21,7 @@ async function initWebWorker(ws) {
     let worker = new Worker("js/worker.js");
     worker.onmessage = function (e) {
         const { type, payload } = e.data;
-        console.log("processing event", type);
+        console.log("processing worker event", type);
         switch (type) {
             case "ready":
                 const url = "/images/moon.jpeg";
@@ -29,8 +29,7 @@ async function initWebWorker(ws) {
                 break;
             case "init/done":
                 const [width, height] = payload;
-                console.log(width, height);
-                sendWsEvent(we, "NewImage", { dimensions: [width, height] });
+                sendWsEvent(ws, "NewImage", { dimensions: [width, height] });
                 canvas.width = width;
                 canvas.height = height;
                 epochBtn.disabled = false;
@@ -43,8 +42,6 @@ async function initWebWorker(ws) {
                     circle.color = Array.from(circle.color);
 
                     const message = JSON.stringify({"Circle": circle});
-                    console.log(circle);
-                    console.log(message);
                     sendWsEvent(ws, "Circle", circle);
                 } else {
                     console.log("No circle found");
