@@ -11,7 +11,6 @@ use shape_evolution::random_shape::{RandomCircle, RandomShape};
 mod utils;
 pub mod web;
 
-
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct TestStruct {
     target_img: image::RgbaImage,

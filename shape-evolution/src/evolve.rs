@@ -1,5 +1,5 @@
-use image::RgbaImage;
 use crate::random_shape::{RandomCircle, RandomShape};
+use image::RgbaImage;
 use std::iter;
 use std::path::Path;
 

@@ -1,13 +1,13 @@
+use crate::image_diff::image_diff;
 use image::GenericImageView;
 use image::{Pixel, Rgba};
-use crate::image_diff::image_diff;
 use rand::Rng;
-use std::cmp;
 use serde::{
-    ser::{Serializer, SerializeTuple},
-    de::{Deserializer},
-    Serialize, Deserialize
+    de::Deserializer,
+    ser::{SerializeTuple, Serializer},
+    Deserialize, Serialize,
 };
+use std::cmp;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -46,9 +46,11 @@ pub trait RandomShape {
     ) -> i64;
 }
 
-
 // Serializer and deserializer for an Rgba<u8> struct. Used by RandomCircle for its color field.
-fn serialize_rgba<S>(color: &image::Rgba<u8>, ser: S) -> Result<S::Ok, S::Error> where S: Serializer {
+fn serialize_rgba<S>(color: &image::Rgba<u8>, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
     let mut tup = ser.serialize_tuple(4)?;
     tup.serialize_element(&color[0])?;
     tup.serialize_element(&color[1])?;
@@ -56,7 +58,10 @@ fn serialize_rgba<S>(color: &image::Rgba<u8>, ser: S) -> Result<S::Ok, S::Error>
     tup.serialize_element(&color[3])?;
     tup.end()
 }
-fn deserialize_rgba<'de, D>(de: D) -> Result<image::Rgba<u8>, D::Error> where D: Deserializer<'de> {
+fn deserialize_rgba<'de, D>(de: D) -> Result<image::Rgba<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
     let tup: (u8, u8, u8, u8) = Deserialize::deserialize(de)?;
     Ok(image::Rgba([tup.0, tup.1, tup.2, tup.3]))
 }
@@ -73,9 +78,12 @@ pub struct RandomCircle {
     pub center: (i32, i32),
 
     pub radius: i32,
-    
+
     #[wasm_bindgen(skip)]
-    #[serde(serialize_with = "serialize_rgba", deserialize_with = "deserialize_rgba")]
+    #[serde(
+        serialize_with = "serialize_rgba",
+        deserialize_with = "deserialize_rgba"
+    )]
     pub color: image::Rgba<u8>,
 }
 
@@ -87,7 +95,10 @@ pub struct RandomCircle {
     pub imgy: u32,
     pub center: (i32, i32),
     pub radius: i32,
-    #[serde(serialize_with = "serialize_rgba", deserialize_with = "deserialize_rgba")]
+    #[serde(
+        serialize_with = "serialize_rgba",
+        deserialize_with = "deserialize_rgba"
+    )]
     pub color: image::Rgba<u8>,
 }
 
@@ -105,12 +116,7 @@ impl RandomCircle {
     }
     #[wasm_bindgen(getter)]
     pub fn color(&self) -> js_sys::Uint8Array {
-        js_sys::Uint8Array::from(&[
-            self.color[0],
-            self.color[1],
-            self.color[2],
-            self.color[3],
-        ][..])
+        js_sys::Uint8Array::from(&[self.color[0], self.color[1], self.color[2], self.color[3]][..])
     }
     #[wasm_bindgen(setter)]
     pub fn set_color(&mut self, color: &[u8]) {
@@ -218,7 +224,7 @@ impl RandomShape for RandomCircle {
         scale: f64,
     ) -> i64 {
         if self.get_bounds(scale) == None {
-            return 0 // If the bounds lay outside the image, this shape does not change the image
+            return 0; // If the bounds lay outside the image, this shape does not change the image
         }
         self.score_bresenham(target_img, current_img, scale)
 
