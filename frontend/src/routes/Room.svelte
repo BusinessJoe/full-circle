@@ -103,17 +103,18 @@
     let websocket = initWebsocket(uri, onEvent);
     initWebWorker(onWebWorkerEvent).then(_worker => {
         worker = _worker;
-        function readSingleFile(e) {
-            let file = e.target.files[0];
-            if (!file) {
-                return;
-            }
-
-            file.arrayBuffer().then(buffer => {
-                worker.postMessage({ type: "init/buffer", payload: buffer });
-            });
-        }
     });
+
+    function readSingleFile(e) {
+        let file = e.target.files[0];
+        if (!file) {
+            return;
+        }
+
+        file.arrayBuffer().then(buffer => {
+            worker.postMessage({ type: "init/buffer", payload: buffer });
+        });
+    }
 
     function runEpoch() {
         worker.postMessage({ type: "epoch", payload: { num_gens: 25, gen_size: 100 } });
@@ -129,7 +130,7 @@
         <button id="start-epochs" on:click={runEpoch} disabled={worker === undefined}>
             Start
         </button>
-        <input type="file" id="file-input" />
+        <input type="file" id="file-input" on:change={readSingleFile}/>
     </div>
     <canvas id="drawing" />
 </main>
@@ -138,6 +139,8 @@
     :root {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
             Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #2b2a33;
+        color: white;
     }
 
     main {
