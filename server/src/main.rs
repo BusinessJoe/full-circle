@@ -200,12 +200,16 @@ async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
                 let rooms = rooms.read().await;
                 let room = rooms.get(room_id).unwrap();
 
+                // Let everyone know there's a new circle
                 broadcast_ws_event(event, room).await;
             }
             WsEvent::NewImage { dimensions } => {
                 let mut rooms = rooms.write().await;
                 let mut room = rooms.get_mut(room_id).unwrap();
                 room.image_dimensions = Some(dimensions);
+
+                // Let everyone know there's a new image
+                broadcast_ws_event(event, room).await;
             }
             _ => {
                 eprintln!("Unsupported message type");

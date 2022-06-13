@@ -18,6 +18,8 @@
         return ws;
     }
 
+
+    // Helper function for sending an event through a websocket
     export function sendWsEvent(ws, type, payload) {
         const message = JSON.stringify({ [type]: payload });
         ws.send(message);
