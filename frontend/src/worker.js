@@ -67,7 +67,6 @@ async function init_wasm_in_worker() {
                                 radius: best_circle.radius,
                                 color: best_circle.color,
                             },
-                            image_data: test_struct.get_image_data(),
                         }
                     });
                 } else {

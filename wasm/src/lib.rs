@@ -122,18 +122,3 @@ impl TestStruct {
         self.target_img.height()
     }
 }
-
-// Called by our JS entry point to run the example.
-#[wasm_bindgen]
-pub fn run() -> Result<(), JsValue> {
-    utils::set_panic_hook();
-
-    // ...
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
-    let p: web_sys::Node = document.create_element("p")?.into();
-    p.set_text_content(Some("Hello from Rust, WebAssembly, and Webpack!"));
-    // ...
-
-    Ok(())
-}
