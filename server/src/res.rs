@@ -8,4 +8,5 @@ pub enum WsEvent {
     NewImage { dimensions: (u32, u32) },
     RoomPath(String),
     PlayerList(Vec<PlayerInfo>),
+    PlayerId(String),
 }
