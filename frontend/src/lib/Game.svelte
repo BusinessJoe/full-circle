@@ -42,6 +42,11 @@
             case "Circle":
                 drawCircle(payload);
                 break;
+            case "CircleSequence":
+                for (let circle of payload) {
+                    drawCircle(circle);
+                }
+                break;
             case "RoomPath":
                 room_path = payload;
                 break;

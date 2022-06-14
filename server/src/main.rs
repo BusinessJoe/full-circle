@@ -5,6 +5,7 @@ use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use shape_evolution::random_shape::RandomCircle;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::Duration;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -39,6 +40,7 @@ pub struct Room {
     id: String,
     players: Players,
     image_dimensions: Option<(u32, u32)>,
+    circles: Vec<RandomCircle>,
     cleanup_abort_handle: Option<AbortHandle>,
 }
 impl Room {
@@ -47,6 +49,7 @@ impl Room {
             id,
             players: Players::default(),
             image_dimensions: None,
+            circles: Vec::new(),
             cleanup_abort_handle: None,
         }
     }
@@ -185,16 +188,20 @@ async fn connect_player(
         // Cancel the room's cleanup process
         room.cancel_cleanup();
 
-        // Tell the player what their id is
-        send_player_id(&player);
-
         // Add the player to the room
         room.players.push(player);
-    }
-    {
-        let room = room.read().await;
-        println!("Player {} joined room {}", &player_info.id, &room.id);
-        broadcast_player_list(&room).await;
+
+        let player = room
+            .players
+            .last()
+            .expect("There should always be a player after the push");
+
+        println!("Player {} joined room {}", player.info.id, &room.id);
+
+        // Tell the player what their id is
+        send_player_id(player);
+        send_current_circles(player, &room);
+        broadcast_player_list(&room);
     }
 
     // Every time the host sends a message, broadcast it to
@@ -203,12 +210,12 @@ async fn connect_player(
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("websocket error(uid={}): {}", &player_info.id, e);
+                eprintln!("websocket error(uid={}): {}", player_info.id, e);
                 break;
             }
         };
         if player_info.is_host {
-            user_message(&player_info.id, msg, room.clone()).await;
+            handle_user_message(msg, room.clone()).await;
         }
     }
 
@@ -217,8 +224,8 @@ async fn connect_player(
     user_disconnected(&player_info.id, &rooms, room).await;
 }
 
-async fn user_message(my_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
-    // Skip any non-Text messages...
+async fn handle_user_message(msg: Message, room: Arc<RwLock<Room>>) {
+    // Skip any non-Text messages
     let msg = if let Ok(s) = msg.to_str() {
         s
     } else {
@@ -227,10 +234,11 @@ async fn user_message(my_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
 
     match serde_json::from_str::<WsEvent>(msg) {
         Ok(event) => match event {
-            WsEvent::Circle(_) => {
-                let room = room.read().await;
+            WsEvent::Circle(ref circle) => {
+                let mut room = room.write().await;
+                room.circles.push(circle.clone());
                 // Let everyone know there's a new circle
-                broadcast_ws_event(event, &room).await;
+                broadcast_ws_event(event, &room);
             }
             WsEvent::NewImage { dimensions } => {
                 {
@@ -239,7 +247,7 @@ async fn user_message(my_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
                 }
                 // Let everyone know there's a new image
                 let room = room.read().await;
-                broadcast_ws_event(event, &room).await;
+                broadcast_ws_event(event, &room);
             }
             _ => {
                 eprintln!("Unsupported message type");
@@ -296,16 +304,33 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room: Arc<RwLock<Room>>) 
         delete_room(rooms, &room).await;
     } else {
         // otherwise let everyone know who is still connected
-        broadcast_player_list(&room).await;
+        broadcast_player_list(&room);
     }
 }
 
-fn send_player_id(player: &Player) {
-    let message = serde_json::to_string(&WsEvent::PlayerId(player.info.id.clone())).unwrap();
+// Send a WsEvent to a single player
+fn send_ws_event(event: WsEvent, player: &Player) {
+    let message = serde_json::to_string(&event).expect("failed to serialize event");
     player.sender.send(Message::text(&message));
 }
 
-async fn broadcast_ws_event(event: WsEvent, room: &Room) {
+fn send_current_circles(player: &Player, room: &Room) {
+    // No need to send an empty sequence
+    if room.circles.is_empty() {
+        return;
+    }
+
+    let event = WsEvent::CircleSequence(room.circles.clone());
+    send_ws_event(event, player);
+}
+
+fn send_player_id(player: &Player) {
+    let event = WsEvent::PlayerId(player.info.id.clone());
+    send_ws_event(event, player);
+}
+
+// Broadcast a WsEvent to every player in a room
+fn broadcast_ws_event(event: WsEvent, room: &Room) {
     let message = serde_json::to_string(&event).unwrap();
     for p in room.players.iter() {
         if let Err(_disconnected) = p.sender.send(Message::text(&message)) {
@@ -316,8 +341,8 @@ async fn broadcast_ws_event(event: WsEvent, room: &Room) {
     }
 }
 
-async fn broadcast_player_list(room: &Room) {
+fn broadcast_player_list(room: &Room) {
     let player_list = WsEvent::PlayerList(room.players.iter().map(|p| p.info.clone()).collect());
 
-    broadcast_ws_event(player_list, room).await;
+    broadcast_ws_event(player_list, room);
 }
