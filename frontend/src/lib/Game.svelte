@@ -12,7 +12,7 @@
     let players = [];
     let player_id;
 
-    $: is_host = new Boolean(players.find(info => info.id === player_id)?.is_host);
+    $: is_host = Boolean(players.find(info => info.id === player_id)?.is_host);
 
     function drawCircle(circle) {
         const canvas = document.getElementById('drawing');
@@ -127,7 +127,7 @@
         {short_room_link}
     </a>
     <div>
-        <button id="start-epochs" on:click={runEpoch} disabled={worker === undefined}>
+        <button id="start-epochs" on:click={runEpoch} disabled={!is_host || (worker === undefined)}>
             Start
         </button>
         <input type="file" id="file-input" on:change={readSingleFile}/>
