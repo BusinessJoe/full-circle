@@ -1,9 +1,9 @@
 <script>
-  import { Router, Link, Route } from "svelte-routing";
-  import Room from "./routes/Room.svelte";
-  import Join from "./routes/Join.svelte";
+    import { Router, Link, Route } from "svelte-routing";
+    import Room from "./routes/Room.svelte";
+    import Join from "./routes/Join.svelte";
 
-  export let url = "";
+    export let url = "";
 </script>
 
 <Router url="{url}">

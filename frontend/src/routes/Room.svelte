@@ -10,9 +10,11 @@
         return await res.text();
     }
 
-    create_room().then(room_id => {
-        navigate(room_id);
-    });
+    //create_room().then(room_id => {
+    //    navigate(room_id);
+    //});
 </script>
 
-
+<button on:click={() => create_room().then(navigate)}>
+    Create Room
+</button>
