@@ -61,6 +61,7 @@
                 break;
             case "PlayerId":
                 player_id = payload;
+                break;
             default:
                 console.error(`Type ${type} not recognized`);
                 break;
