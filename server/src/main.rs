@@ -183,7 +183,7 @@ async fn connect_player(
     room_id: String,
     mut client_ws_rcv: SplitStream<WebSocket>,
 ) {
-    let player_id = player.info.id.clone();
+    let player_info = player.info.clone();
     {
         let mut rooms = rooms.write().await;
         let room = rooms.get_mut(&room_id).unwrap();
@@ -198,26 +198,28 @@ async fn connect_player(
             let mut players = room.players.write().await;
             players.push(player);
         }
-        println!("Player {} joined room {}", &player_id, &room.room_id);
+        println!("Player {} joined room {}", &player_info.id, &room.room_id);
         broadcast_player_list(room).await;
     }
 
-    // Every time the user sends a message, broadcast it to
-    // all other users...
+    // Every time the host sends a message, broadcast it to
+    // all other users
     while let Some(result) = client_ws_rcv.next().await {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("websocket error(uid={}): {}", &player_id, e);
+                eprintln!("websocket error(uid={}): {}", &player_info.id, e);
                 break;
             }
         };
-        user_message(&player_id, msg, &rooms, &room_id).await;
+        if player_info.is_host {
+            user_message(&player_info.id, msg, &rooms, &room_id).await;
+        }
     }
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&player_id, &rooms, &room_id).await;
+    user_disconnected(&player_info.id, &rooms, &room_id).await;
 }
 
 async fn user_message(my_id: &str, msg: Message, rooms: &Rooms, room_id: &str) {
@@ -267,7 +269,9 @@ async fn delete_room(rooms: &Rooms, room_id: &str) {
 }
 
 async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
-    let should_delete_room = {
+    let mut should_delete_room = false;
+
+    {
         let rooms = rooms.read().await;
         let room = rooms.get(room_id).unwrap();
         eprintln!("good bye player: {}", my_id);
@@ -276,16 +280,26 @@ async fn user_disconnected(my_id: &str, rooms: &Rooms, room_id: &str) {
         // Acquire write lock. The lock will be dropped on function end.
         let mut players = room.players.write().await;
 
+        let mut removed_player = None;
         let mut i = 0;
         while i < players.len() {
             if players[i].info.id == my_id {
-                players.remove(i);
+                removed_player = Some(players.remove(i));
+                break;
             } else {
                 i += 1;
             }
         }
 
-        players.is_empty()
+        if let Some(removed_player) = removed_player {
+            if removed_player.info.is_host {
+                players[i].info.is_host = true;
+            }
+        } else {
+            eprintln!("A player was not removed in user_disconnect");
+        }
+
+        should_delete_room = players.is_empty()
     };
 
     if should_delete_room {

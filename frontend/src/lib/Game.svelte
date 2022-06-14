@@ -12,6 +12,8 @@
     let players = [];
     let player_id;
 
+    $: is_host = new Boolean(players.find(info => info.id === player_id)?.is_host);
+
     function drawCircle(circle) {
         const canvas = document.getElementById('drawing');
         const ctx = canvas.getContext('2d');
@@ -131,7 +133,10 @@
         <input type="file" id="file-input" on:change={readSingleFile}/>
     </div>
     <div>
-        You are {player_id}
+        You are {player_id}, host: {is_host}
+    </div>
+    <div>
+        Players:
         {#each players as player}
             <div>
                 Name: {player.id}
