@@ -1,4 +1,5 @@
 <script>
+    import { onMount, onDestroy } from 'svelte';
     import { initWebsocket, sendWsEvent } from '../lib/Websocket.svelte';
     import { initWebWorker } from '../lib/WebWorker.svelte';
 
@@ -9,6 +10,7 @@
     $: room_link = room_path ? location.origin + room_path : "";
 
     let worker;
+    let websocket;
     let players = [];
     let player_id;
 
@@ -106,11 +108,6 @@
         }
     }
 
-    let websocket = initWebsocket(websocket_url, onEvent);
-    initWebWorker(onWebWorkerEvent).then(_worker => {
-        worker = _worker;
-    });
-
     function readSingleFile(e) {
         let file = e.target.files[0];
         if (!file) {
@@ -125,6 +122,19 @@
     function runEpoch() {
         worker.postMessage({ type: "epoch", payload: { num_gens: 25, gen_size: 100 } });
     }
+
+    onMount(() => {
+        websocket = initWebsocket(websocket_url, onEvent);
+
+        initWebWorker(onWebWorkerEvent).then(_worker => {
+            worker = _worker;
+        });
+    });
+
+    onDestroy(() => {
+        websocket.close();
+        worker.terminate();
+    });
 </script>
 
 <main>
@@ -136,7 +146,7 @@
         <button id="start-epochs" on:click={runEpoch} disabled={!is_host || (worker === undefined)}>
             Start
         </button>
-        <input type="file" id="file-input" on:change={readSingleFile}/>
+        <input type="file" id="file-input" on:change={readSingleFile} disabled={!is_host || (worker === undefined)} />
     </div>
     <div>
         You are {player_id}, host: {is_host}

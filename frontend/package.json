@@ -5,7 +5,7 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "start": "sirv public --no-clear --port 3000 --host"
+    "start": "sirv public --no-clear --port 3000 --host --single"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^17.0.0",

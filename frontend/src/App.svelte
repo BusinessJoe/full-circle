@@ -8,7 +8,7 @@
 
 <Router url="{url}">
   <nav>
-    <a href="/">Home</a>
+    <Link to="/">Home</Link>
   </nav>
   <div>
     <Route path="/"><Room /></Route>

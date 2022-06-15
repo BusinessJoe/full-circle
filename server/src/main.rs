@@ -182,7 +182,7 @@ async fn connect_player(
     room: Arc<RwLock<Room>>,
     mut client_ws_rcv: SplitStream<WebSocket>,
 ) {
-    let player_info = player.info.clone();
+    let player_id = player.info.id.clone();
     {
         let mut room = room.write().await;
         // Cancel the room's cleanup process
@@ -210,27 +210,36 @@ async fn connect_player(
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("websocket error(uid={}): {}", player_info.id, e);
+                eprintln!("websocket error(uid={}): {}", player_id, e);
                 break;
             }
         };
-        if player_info.is_host {
-            handle_user_message(msg, room.clone()).await;
-        }
+        handle_user_message(&player_id, msg, room.clone()).await;
     }
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&player_info.id, &rooms, room).await;
+    user_disconnected(&player_id, &rooms, room).await;
 }
 
-async fn handle_user_message(msg: Message, room: Arc<RwLock<Room>>) {
+async fn handle_user_message(player_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
     // Skip any non-Text messages
     let msg = if let Ok(s) = msg.to_str() {
         s
     } else {
         return;
     };
+
+    // Only handle host's messages
+    {
+        let room = room.read().await;
+        if let Some(player) = room.players.iter().find(|&p| p.info.id == player_id) {
+            if !player.info.is_host {
+                eprintln!("Rejecting message from player {}", player_id);
+                return;
+            }
+        }
+    }
 
     match serde_json::from_str::<WsEvent>(msg) {
         Ok(event) => match event {
