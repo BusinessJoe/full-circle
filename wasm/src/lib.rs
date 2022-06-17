@@ -23,39 +23,20 @@ pub struct TestStruct {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl TestStruct {
-    pub async fn new_async(url: String) -> Self {
-        utils::set_panic_hook();
 
-        let target_img = web::load_image(&url).await.unwrap();
+    fn new_from_image(target_img: RgbaImage) -> Self {
         let (width, height) = target_img.dimensions();
 
-        let scale = std::cmp::max(width, height) as f64 / 50.0;
-        let (scaled_width, scaled_height) = (
-            (width as f64 / scale) as u32,
-            (height as f64 / scale) as u32,
-        );
-        // Create a scaled down target image for faster drawing and scoring
-        let scaled_target_img = image::imageops::resize(
+        // Scale the target image down to an appropriate size
+        // 500 × 500 = 250,000 pixels seems good enough
+        const TARGET_NUM_PIXELS: u32 = 500 * 500;
+        let target_scale_factor: f64 = (f64::from(width * height) / f64::from(TARGET_NUM_PIXELS)).sqrt();
+        let target_img = image::imageops::resize(
             &target_img,
-            scaled_width,
-            scaled_height,
+            (f64::from(width) / target_scale_factor) as u32,
+            (f64::from(height) / target_scale_factor) as u32,
             image::imageops::FilterType::Nearest,
         );
-
-        Self {
-            target_img,
-            current_img: RgbaImage::new(width, height),
-            scaled_target_img,
-            scaled_current_img: RgbaImage::new(scaled_width, scaled_height),
-            scale,
-            current_score: i64::from(width * height * 255 * 3),
-        }
-    }
-
-    pub fn new_from_buffer(buffer: ArrayBuffer) -> Self {
-        utils::set_panic_hook();
-
-        let target_img = web::load_image_from_buffer(&buffer).unwrap();
         let (width, height) = target_img.dimensions();
 
         let scale = std::cmp::max(width, height) as f64 / 100.0;
@@ -79,6 +60,20 @@ impl TestStruct {
             scale,
             current_score: i64::from(width * height * 255 * 3),
         }
+    }
+
+    pub async fn new_async(url: String) -> Self {
+        utils::set_panic_hook();
+
+        let target_img = web::load_image(&url).await.unwrap();
+        Self::new_from_image(target_img)
+    }
+
+    pub fn new_from_buffer(buffer: ArrayBuffer) -> Self {
+        utils::set_panic_hook();
+
+        let target_img = web::load_image_from_buffer(&buffer).unwrap();
+        Self::new_from_image(target_img)
     }
 
     pub fn get_image_data(&self) -> Result<JsValue, JsValue> {

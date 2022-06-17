@@ -2,8 +2,10 @@
     import { onMount, onDestroy } from 'svelte';
     import { initWebsocket, sendWsEvent } from '../lib/Websocket.svelte';
     import { initWebWorker } from '../lib/WebWorker.svelte';
+    import PlayerDisplay from '../lib/PlayerDisplay.svelte';
 
     export let websocket_url;
+    export let name;
 
     let room_path = "";
     $: short_room_link = room_path ? location.hostname + room_path : "";
@@ -12,12 +14,15 @@
     let worker;
     let websocket;
     let players = [];
-    let player_id;
+    let public_id;
+    let is_host = false;
+    let width = 100;
+    let height = 100;
 
-    $: is_host = Boolean(players.find(info => info.id === player_id)?.is_host);
+    $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
 
     function drawCircle(circle) {
-        const canvas = document.getElementById('drawing');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
         const { imgx, imgy, center, radius, color } = circle;
@@ -40,6 +45,7 @@
 
     // Websocket event handler
     function onEvent(type, payload) {
+        console.log("Event:", type);
         switch (type) {
             case "Circle":
                 drawCircle(payload);
@@ -53,21 +59,20 @@
                 room_path = payload;
                 break;
             case "NewImage":
-                const canvas = document.getElementById('drawing');
-                const [width, height] = payload.dimensions;
+                const [new_width, new_height] = payload.dimensions;
+                width = new_width;
+                height = new_height;
                 console.log("new canvas dimensions:", width, height);
-                canvas.width = width;
-                canvas.height = height;
+                break;
+            case "PrivateInfo":
+                console.log(payload);
+                public_id = payload.info.public_id;
                 break;
             case "PlayerList":
-                console.log(payload);
                 players = payload;
-                for (let player of payload) {
-                    console.log(player.id);
-                }
                 break;
-            case "PlayerId":
-                player_id = payload;
+            case "Host":
+                is_host = payload;
                 break;
             default:
                 console.error(`Type ${type} not recognized`);
@@ -124,7 +129,7 @@
     }
 
     onMount(() => {
-        websocket = initWebsocket(websocket_url, onEvent);
+        websocket = initWebsocket(websocket_url, name, onEvent);
 
         initWebWorker(onWebWorkerEvent).then(_worker => {
             worker = _worker;
@@ -138,43 +143,35 @@
 </script>
 
 <main>
-    <h1>Full Circle</h1>
-    <a href={room_link}>
-        {short_room_link}
-    </a>
-    <div>
-        <button id="start-epochs" on:click={runEpoch} disabled={!is_host || (worker === undefined)}>
-            Start
-        </button>
-        <input type="file" id="file-input" on:change={readSingleFile} disabled={!is_host || (worker === undefined)} />
-    </div>
-    <div>
-        You are {player_id}, host: {is_host}
-    </div>
-    <div>
-        Players:
-        {#each players as player}
+    <div id="game-wrapper">
+        <div id="main-panel">
+            <h1>Full Circle</h1>
+            <a href={room_link}>
+                {short_room_link}
+            </a>
             <div>
-                Name: {player.id}
+                <button id="start-epochs" on:click={runEpoch} disabled={!is_host || (worker === undefined)}>
+                    Start
+                </button>
+                <input type="file" id="file-input" on:change={readSingleFile} disabled={!is_host || (worker === undefined)} />
             </div>
             <div>
-                Host: {player.is_host}
+                You are {public_id}, host: {is_host}
             </div>
-        {/each}
+            <div id="canvas-wrapper" class={width > height ? "canvas-wrapper-landscape" : "canvas-wrapper-portrait"}>
+                <canvas id="canvas" width={width} height={height} class={width > height ? "canvas-landscape" : "canvas-portrait"} />
+            </div>
+        </div>
+            <PlayerDisplay players={players} />
     </div>
-    <canvas id="drawing" />
 </main>
 
 <style>
     :root {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
             Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        background-color: #2b2a33;
-        color: white;
-    }
-
-    main {
-        margin: 1em;
+            background-color: #1e1e1e;
+            color: white;
     }
 
     h1 {
@@ -183,7 +180,56 @@
         font-size: 2rem;
         font-weight: 100;
         line-height: 1.1;
-        margin: 1rem 0;
+        margin: 0.5rem 0;
         max-width: 14rem;
+    }
+
+    main {
+        display: flex;
+        justify-content: center;
+    }
+
+    #game-wrapper {
+        display: flex;
+    }
+
+    #main-panel {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 10px;
+        background-color: #2b2a33;
+        border-radius: 5px;
+    }
+
+    #canvas-wrapper {
+        width: 70vh;
+        height: 70vh;
+        display: flex;
+        justify-content: center;
+    }
+
+    #canvas {
+        border: 1px solid white;
+    }
+
+    .canvas-wrapper-landscape {
+        flex-direction: column;
+    }
+
+    .canvas-landscape {
+        width: 100%;
+        height: auto;
+    }
+
+    .canvas-wrapper-portrait {
+        flex-direction: row;
+    }
+
+    .canvas-portrait {
+        height: 100%;
+        width: auto;
+        margin-left: auto;
+        margin-right: auto;
     }
 </style>

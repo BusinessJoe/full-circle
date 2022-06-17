@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::error::Error;
 
 use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
@@ -15,20 +16,28 @@ use warp::{http::Response, Filter};
 mod res;
 use res::WsEvent;
 
+/// Public facing info about a player - we aren't worried about
+/// other players knowing this data.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PlayerInfo {
-    id: String,
+    name: String,
+    public_id: String,
     is_host: bool,
 }
+#[derive(Serialize)]
 pub struct Player {
+    private_id: String,
     info: PlayerInfo,
+    #[serde(skip_serializing)]
     sender: mpsc::UnboundedSender<Message>,
 }
 impl Player {
-    pub fn new(is_host: bool, sender: mpsc::UnboundedSender<Message>) -> Self {
-        let id = uuid::Uuid::new_v4().to_string();
+    pub fn new(name: String, is_host: bool, sender: mpsc::UnboundedSender<Message>) -> Self {
+        let public_id = uuid::Uuid::new_v4().to_string();
+        let private_id = uuid::Uuid::new_v4().to_string();
         Player {
-            info: PlayerInfo { id, is_host },
+            private_id,
+            info: PlayerInfo { name, public_id, is_host },
             sender,
         }
     }
@@ -60,6 +69,10 @@ impl Room {
             abort_handle.abort();
             self.cleanup_abort_handle = None;
         }
+    }
+
+    pub fn get_player(&self, private_id: &str) -> Option<&Player> {
+        self.players.iter().find(|p| p.private_id == private_id)
     }
 }
 
@@ -139,6 +152,24 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
         .unwrap())
 }
 
+// TODO: test this function
+async fn wait_for_name(client_ws_rcv: &mut SplitStream<WebSocket>) -> Option<String> {
+    let result = client_ws_rcv.next().await?;
+    let msg = result.ok()?;
+    let text = msg.to_str().ok()?;
+
+    match serde_json::from_str::<WsEvent>(text) {
+        Ok(event) => {
+            if let WsEvent::PlayerName(name) = event {
+                Some(name)
+            } else {
+                None
+            }
+        },
+        _ => None
+    }
+}
+
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     // First check that the provided room id matches an existing room.
     let room = {
@@ -151,13 +182,22 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
     };
 
     // Split the socket into a sender and receiver of messages.
-    let (client_ws_sender, client_ws_rcv) = ws.split();
+    let (client_ws_sender, mut client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
     tokio::task::spawn(client_rcv.map(Ok).forward(client_ws_sender));
 
+    // Wait for player to send a name before continuing with connection
+    let name = match wait_for_name(&mut client_ws_rcv).await {
+        Some(name) => name,
+        None => {
+            return;
+        }
+    };
+
     // Send room's current image dimensions (if they exist) to the new player
+    // TODO: consider moving this
     if let Some(dimensions) = room.read().await.image_dimensions {
         client_sender
             .send(Message::text(
@@ -166,12 +206,13 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
             .expect("Error sending new-image");
     }
 
+    // TODO: this should be done in the same lock as when the player is added to the room.
     let is_host = {
         let players = &room.read().await.players;
         players.is_empty()
     };
 
-    let player = Player::new(is_host, client_sender);
+    let player = Player::new(name, is_host, client_sender);
 
     connect_player(player, rooms, room, client_ws_rcv).await;
 }
@@ -182,7 +223,7 @@ async fn connect_player(
     room: Arc<RwLock<Room>>,
     mut client_ws_rcv: SplitStream<WebSocket>,
 ) {
-    let player_id = player.info.id.clone();
+    let private_id = player.private_id.clone();
     {
         let mut room = room.write().await;
         // Cancel the room's cleanup process
@@ -196,12 +237,12 @@ async fn connect_player(
             .last()
             .expect("There should always be a player after the push");
 
-        println!("Player {} joined room {}", player.info.id, &room.id);
+        println!("Player {} joined room {}", player.private_id, &room.id);
 
         // Tell the player what their id is
-        send_player_id(player);
-        send_current_circles(player, &room);
+        send_private_info(player);
         broadcast_player_list(&room);
+        send_current_circles(player, &room);
     }
 
     // Every time the host sends a message, broadcast it to
@@ -210,19 +251,19 @@ async fn connect_player(
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("websocket error(uid={}): {}", player_id, e);
+                eprintln!("websocket error(uid={}): {}", private_id, e);
                 break;
             }
         };
-        handle_user_message(&player_id, msg, room.clone()).await;
+        handle_user_message(&private_id, msg, room.clone()).await;
     }
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&player_id, &rooms, room).await;
+    user_disconnected(&private_id, &rooms, room).await;
 }
 
-async fn handle_user_message(player_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
+async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Room>>) {
     // Skip any non-Text messages
     let msg = if let Ok(s) = msg.to_str() {
         s
@@ -233,9 +274,9 @@ async fn handle_user_message(player_id: &str, msg: Message, room: Arc<RwLock<Roo
     // Only handle host's messages
     {
         let room = room.read().await;
-        if let Some(player) = room.players.iter().find(|&p| p.info.id == player_id) {
+        if let Some(player) = room.players.iter().find(|&p| p.private_id == private_id) {
             if !player.info.is_host {
-                eprintln!("Rejecting message from player {}", player_id);
+                eprintln!("Rejecting message from player {}", private_id);
                 return;
             }
         }
@@ -276,18 +317,18 @@ async fn delete_room(rooms: &Rooms, room: &Room) {
     eprintln!("Deleted room {}", &room.id);
 }
 
-async fn user_disconnected(my_id: &str, rooms: &Rooms, room: Arc<RwLock<Room>>) {
+async fn user_disconnected(private_id: &str, rooms: &Rooms, room: Arc<RwLock<Room>>) {
     {
         let mut room = room.write().await;
 
-        eprintln!("good bye player: {}", my_id);
+        eprintln!("good bye player: {}", private_id);
         // Stream closed up, so remove from the user list.
         // Acquire write lock. The lock will be dropped on function end.
         let players = &mut room.players;
         let mut removed_player = None;
         let mut i = 0;
         while i < players.len() {
-            if players[i].info.id == my_id {
+            if players[i].private_id == private_id {
                 removed_player = Some(players.remove(i));
                 break;
             } else {
@@ -333,8 +374,8 @@ fn send_current_circles(player: &Player, room: &Room) {
     send_ws_event(event, player);
 }
 
-fn send_player_id(player: &Player) {
-    let event = WsEvent::PlayerId(player.info.id.clone());
+fn send_private_info(player: &Player) {
+    let event = WsEvent::PrivateInfo(player);
     send_ws_event(event, player);
 }
 

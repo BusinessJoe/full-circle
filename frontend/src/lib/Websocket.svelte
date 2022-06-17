@@ -1,14 +1,16 @@
 <script context="module">
     // onEvent(type, payload)
-    export function initWebsocket(uri, onEvent) {
+    export function initWebsocket(uri, name, onEvent) {
         const canvas = document.getElementById('drawing');
 
         console.log(uri);
         const ws = new WebSocket(uri);
 
-        ws.onopen = () => {console.log("Websocket opened");};
+        ws.onopen = () => {
+            console.log("Websocket opened");
+            sendWsEvent(ws, "PlayerName", name);
+        };
         ws.onmessage = (message) => {
-            console.log('received from ws:', JSON.parse(message.data));
             const data = JSON.parse(message.data);
             const type = Object.keys(data)[0];
             const payload = data[type];
