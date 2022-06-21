@@ -282,6 +282,7 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
         }
     }
 
+    // Handle WsEvents
     match serde_json::from_str::<WsEvent>(msg) {
         Ok(event) => match event {
             WsEvent::Circle(ref circle) => {
@@ -291,16 +292,14 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
                 broadcast_ws_event(event, &room);
             }
             WsEvent::NewImage { dimensions } => {
-                {
-                    let mut room = room.write().await;
-                    room.image_dimensions = Some(dimensions);
-                }
+                let mut room = room.write().await;
+                room.image_dimensions = Some(dimensions);
+                room.circles.clear();
                 // Let everyone know there's a new image
-                let room = room.read().await;
                 broadcast_ws_event(event, &room);
             }
             _ => {
-                eprintln!("Unsupported message type");
+               eprintln!("Unsupported message type");
             }
         },
         Err(e) => {

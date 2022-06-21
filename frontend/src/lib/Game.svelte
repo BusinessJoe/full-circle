@@ -3,6 +3,7 @@
     import { initWebsocket, sendWsEvent } from '../lib/Websocket.svelte';
     import { initWebWorker } from '../lib/WebWorker.svelte';
     import PlayerDisplay from '../lib/PlayerDisplay.svelte';
+    import ImagePicker from '../lib/ImagePicker.svelte';
 
     export let websocket_url;
     export let name;
@@ -12,14 +13,17 @@
     $: room_link = room_path ? location.origin + room_path : "";
 
     let worker;
+    let worker_ready = false;
+
     let websocket;
     let players = [];
     let public_id;
-    let is_host = false;
     let width = 100;
     let height = 100;
+    let answer = "";
 
     $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
+    $: display_controls = is_host && worker_ready;
 
     function drawCircle(circle) {
         const canvas = document.getElementById('canvas');
@@ -83,15 +87,12 @@
     function onWebWorkerEvent(worker, type, payload) {
         switch (type) {
             case "ready":
-                const url = "/moon.jpeg";
-                worker.postMessage({ type: "init/url", payload: url });
+                worker_ready = true;
                 break;
             case "init/done":
                 const [width, height] = payload;
-                sendWsEvent(websocket, "NewImage", { dimensions: [width, height] });
-                //canvas.width = width;
-                //canvas.height = height;
-                //epochBtn.disabled = false;
+                sendWsEvent(websocket, "NewImage", { dimensions: [width, height], answer });
+                runEpoch();
                 break;
             case "epoch/done":
                 if (payload) {
@@ -113,15 +114,9 @@
         }
     }
 
-    function readSingleFile(e) {
-        let file = e.target.files[0];
-        if (!file) {
-            return;
-        }
-
-        file.arrayBuffer().then(buffer => {
-            worker.postMessage({ type: "init/buffer", payload: buffer });
-        });
+    function onSubmit(buf, ans) {
+        answer = ans;
+        worker.postMessage({ type: "init/buffer", payload: buf });
     }
 
     function runEpoch() {
@@ -149,12 +144,9 @@
             <a href={room_link}>
                 {short_room_link}
             </a>
-            <div>
-                <button id="start-epochs" on:click={runEpoch} disabled={!is_host || (worker === undefined)}>
-                    Start
-                </button>
-                <input type="file" id="file-input" on:change={readSingleFile} disabled={!is_host || (worker === undefined)} />
-            </div>
+            {#if display_controls}
+                <ImagePicker onSubmit={onSubmit} />
+            {/if}
             <div>
                 You are {public_id}, host: {is_host}
             </div>

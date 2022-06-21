@@ -15,8 +15,6 @@ pub enum WsEvent<'a> {
     PlayerList(Vec<PlayerInfo>),
     #[serde(skip_deserializing)]
     PrivateInfo(&'a Player),
-    #[serde(skip_deserializing)]
-    Host(bool),
 
     #[serde(skip_serializing)]
     PlayerName(String),
