@@ -26,7 +26,7 @@ fn sum_chunked(samples_a: &[u8], samples_b: &[u8]) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::shape_evolution::image_diff::image_diff;
+    use crate::image_diff::image_diff;
     use image::RgbaImage;
     #[test]
     fn test_diff_black_white() {

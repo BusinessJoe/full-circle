@@ -420,8 +420,8 @@ impl RandomCircle {
 
 #[cfg(test)]
 mod tests {
-    use crate::shape_evolution::image_diff::image_diff;
-    use crate::shape_evolution::random_shape::{BoundingBox, RandomCircle, RandomShape};
+    use crate::image_diff::image_diff;
+    use crate::random_shape::{BoundingBox, RandomCircle, RandomShape};
     use image::RgbaImage;
     use std::iter;
 
