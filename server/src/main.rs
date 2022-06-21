@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::error::Error;
 
 use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
@@ -78,35 +77,43 @@ impl Room {
 
 type Rooms = Arc<RwLock<HashMap<String, Arc<RwLock<Room>>>>>;
 
+fn room_filter(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let filter = warp::any().map(move || rooms.clone());
+    let cors = warp::cors().allow_any_origin();
+
+    // GET /room -> creates a room and returns a path for joining it
+    let room = warp::path("room")
+        .and(filter)
+        .and_then(|rooms| async move { new_room(rooms).await })
+        .with(cors);
+
+    room
+}
+
+fn join_filter(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let filter = warp::any().map(move || rooms.clone());
+
+    // GET /join -> websocket upgrade
+    let join = warp::path!("join" / String)
+        // The `ws()` filter will prepare Websocket handshake...
+        .and(warp::ws())
+        .and(filter)
+        .map(|room_id: String, ws: warp::ws::Ws, rooms| {
+            // This will call our function if the handshake succeeds.
+            ws.on_upgrade(move |socket| player_connected(socket, rooms, room_id))
+        });
+
+    join
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
 
     let rooms = Rooms::default();
 
-    let rooms_clone = rooms.clone();
-    let rooms_filter = warp::any().map(move || rooms_clone.clone());
-
-    let cors = warp::cors().allow_any_origin();
-
-    // GET /room -> creates a room and returns a path for joining it
-    let room = warp::path("room")
-        .and(rooms_filter)
-        .and_then(|rooms| async move { new_room(rooms).await })
-        .with(cors);
-
-    let rooms_clone = rooms.clone();
-    let rooms_filter = warp::any().map(move || rooms_clone.clone());
-
-    // GET /join -> websocket upgrade
-    let join = warp::path!("join" / String)
-        // The `ws()` filter will prepare Websocket handshake...
-        .and(warp::ws())
-        .and(rooms_filter)
-        .map(|room_id: String, ws: warp::ws::Ws, rooms| {
-            // This will call our function if the handshake succeeds.
-            ws.on_upgrade(move |socket| player_connected(socket, rooms, room_id))
-        });
+    let room = room_filter(rooms.clone());
+    let join = join_filter(rooms.clone());
 
     let routes = room.or(join);
 
@@ -394,4 +401,137 @@ fn broadcast_player_list(room: &Room) {
     let player_list = WsEvent::PlayerList(room.players.iter().map(|p| p.info.clone()).collect());
 
     broadcast_ws_event(player_list, room);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Rooms, room_filter, join_filter, new_room, WsEvent};
+    use shape_evolution::random_shape::RandomCircle;
+    use warp::Filter;
+    use image::Rgba;
+
+    #[tokio::test]
+    async fn test_new_room() {
+        let rooms = Rooms::default();
+
+        let room = room_filter(rooms.clone());
+
+        assert_eq!(rooms.read().await.len(), 0);
+
+        let res = warp::test::request()
+            .path("/room")
+            .reply(&room).await;
+
+        assert_eq!(res.status(), 200);
+        assert_eq!(rooms.read().await.len(), 1);
+
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_room_cleanup() {
+        let rooms = Rooms::default();
+
+        let room = room_filter(rooms.clone());
+
+        assert_eq!(rooms.read().await.len(), 0);
+
+        let res = warp::test::request()
+            .path("/room")
+            .reply(&room).await;
+
+        assert_eq!(rooms.read().await.len(), 1);
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(5100)).await;
+
+        assert_eq!(rooms.read().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_player_join() {
+        let rooms = Rooms::default();
+
+        let room = room_filter(rooms.clone());
+        let join = join_filter(rooms.clone());
+
+        assert_eq!(rooms.read().await.len(), 0);
+
+        let res = warp::test::request()
+            .path("/room")
+            .reply(&room).await;
+        let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
+
+        let mut ws = warp::test::ws()
+            .path(join_path)
+            .handshake(join)
+            .await
+            .expect("handshake");
+
+        ws.send_text("{\"PlayerName\": \"Alice\"}").await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        {
+            let rooms = rooms.read().await;
+            assert_eq!(rooms.len(), 1);
+            let room = rooms.values().next().unwrap();
+            let room = room.read().await;
+            assert_eq!(room.players.len(), 1);
+            let player = &room.players[0];
+            assert_eq!(player.info.name, "Alice");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_circles_clear() {
+        let rooms = Rooms::default();
+
+        let room = room_filter(rooms.clone());
+        let join = join_filter(rooms.clone());
+
+        assert_eq!(rooms.read().await.len(), 0);
+
+        let res = warp::test::request()
+            .path("/room")
+            .reply(&room).await;
+        let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
+
+        let mut ws = warp::test::ws()
+            .path(join_path)
+            .handshake(join)
+            .await
+            .expect("handshake");
+
+        ws.send_text("{\"PlayerName\": \"Alice\"}").await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200]}}").await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let circle = RandomCircle {
+            imgx: 100,
+            imgy: 200,
+            center: (50, 50),
+            radius: 20,
+            color: Rgba([255, 0, 0, 255])
+        };
+        ws.send_text(serde_json::to_string(&WsEvent::Circle(circle)).unwrap()).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        {
+            let rooms = rooms.read().await;
+            let room = rooms.values().next().unwrap();
+            let room = room.read().await;
+            assert_eq!(room.circles.len(), 1);
+        }
+
+        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200]}}").await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        {
+            let rooms = rooms.read().await;
+            let room = rooms.values().next().unwrap();
+            let room = room.read().await;
+            assert_eq!(room.circles.len(), 0);
+        }
+    }
 }
