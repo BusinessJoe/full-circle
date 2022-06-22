@@ -4,6 +4,7 @@
     import { initWebWorker } from '../lib/WebWorker.svelte';
     import PlayerDisplay from '../lib/PlayerDisplay.svelte';
     import ImagePicker from '../lib/ImagePicker.svelte';
+    import Chat from '../lib/Chat.svelte';
 
     export let websocket_url;
     export let name;
@@ -17,6 +18,7 @@
 
     let websocket;
     let players = [];
+    let messages = [];
     let public_id;
     let width = 100;
     let height = 100;
@@ -77,6 +79,13 @@
                 break;
             case "Host":
                 is_host = payload;
+                break;
+            case "Answer":
+                alert(payload);
+                break;
+            case "ChatMessage":
+                // We can't just use messages.push(), since the mutation will not trigger an update on its own.
+                messages = [...messages, payload];
                 break;
             default:
                 console.error(`Type ${type} not recognized`);
@@ -139,6 +148,7 @@
 
 <main>
     <div id="game-wrapper">
+        <PlayerDisplay players={players} />
         <div id="main-panel">
             <h1>Full Circle</h1>
             <a href={room_link}>
@@ -154,7 +164,7 @@
                 <canvas id="canvas" width={width} height={height} class={width > height ? "canvas-landscape" : "canvas-portrait"} />
             </div>
         </div>
-            <PlayerDisplay players={players} />
+        <Chat websocket={websocket} messages={messages} />
     </div>
 </main>
 
@@ -183,6 +193,7 @@
 
     #game-wrapper {
         display: flex;
+        height: 90vh;
     }
 
     #main-panel {
@@ -203,6 +214,7 @@
 
     #canvas {
         border: 1px solid white;
+        background-color: #000;
     }
 
     .canvas-wrapper-landscape {
