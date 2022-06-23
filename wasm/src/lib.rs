@@ -23,14 +23,14 @@ pub struct TestStruct {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl TestStruct {
-
     fn new_from_image(target_img: RgbaImage) -> Self {
         let (width, height) = target_img.dimensions();
 
         // Scale the target image down to an appropriate size
         // 500 × 500 = 250,000 pixels seems good enough
         const TARGET_NUM_PIXELS: u32 = 500 * 500;
-        let target_scale_factor: f64 = (f64::from(width * height) / f64::from(TARGET_NUM_PIXELS)).sqrt();
+        let target_scale_factor: f64 =
+            (f64::from(width * height) / f64::from(TARGET_NUM_PIXELS)).sqrt();
         let target_img = image::imageops::resize(
             &target_img,
             (f64::from(width) / target_scale_factor) as u32,
