@@ -6,8 +6,9 @@ use shape_evolution::random_shape::RandomCircle;
 pub enum OutboundWsEvent<'a> {
     Circle(RandomCircle),
     CircleSequence(Vec<RandomCircle>),
-    NewImage { 
-        dimensions: (u32, u32), 
+    NewImage {
+        dimensions: (u32, u32),
+        answer_hint: &'a str,
     },
     PlayerList(Vec<&'a PlayerInfo>),
     PrivateInfo(&'a Player),
@@ -22,9 +23,9 @@ pub enum OutboundWsEvent<'a> {
 pub enum InboundWsEvent<'a> {
     Circle(RandomCircle),
     ChatMessage(&'a str),
-    NewImage { 
-        dimensions: (u32, u32), 
-        answer: String 
+    NewImage {
+        dimensions: (u32, u32),
+        answer: &'a str,
     },
     PlayerName(&'a str),
 }

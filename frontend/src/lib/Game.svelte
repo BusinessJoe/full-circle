@@ -1,7 +1,7 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { initWebsocket, sendWsEvent } from '../lib/Websocket.svelte';
-    import { initWebWorker } from '../lib/WebWorker.svelte';
+    import WebWorker from '../lib/WebWorker.svelte';
     import PlayerDisplay from '../lib/PlayerDisplay.svelte';
     import ImagePicker from '../lib/ImagePicker.svelte';
     import Chat from '../lib/Chat.svelte';
@@ -23,6 +23,7 @@
     let width = 100;
     let height = 100;
     let answer = "";
+    let answer_hint = "";
 
     $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
     $: display_controls = is_host && worker_ready;
@@ -69,6 +70,8 @@
                 width = new_width;
                 height = new_height;
                 console.log("new canvas dimensions:", width, height);
+
+                answer_hint = payload.answer_hint;
                 break;
             case "PrivateInfo":
                 console.log(payload);
@@ -133,23 +136,25 @@
 
     onMount(() => {
         websocket = initWebsocket(websocket_url, name, onEvent);
-
-        initWebWorker(onWebWorkerEvent).then(_worker => {
-            worker = _worker;
-        });
     });
 
     onDestroy(() => {
         websocket.close();
-        worker.terminate();
     });
 </script>
+
+
+{#if is_host}
+    <WebWorker onEvent={onWebWorkerEvent} bind:worker={worker}/>
+{/if}
 
 <main>
     <div id="game-wrapper">
         <PlayerDisplay players={players} />
         <div id="main-panel">
-            <h1>Full Circle</h1>
+            <span class=hint>
+                {answer_hint}
+            </span>
             <a href={room_link}>
                 {short_room_link}
             </a>
@@ -234,5 +239,12 @@
         width: auto;
         margin-left: auto;
         margin-right: auto;
+    }
+
+    .hint {
+        letter-spacing: 5px;
+        text-align: center;
+        width: 100%;
+        margin: 1em 0 1em 0;
     }
 </style>

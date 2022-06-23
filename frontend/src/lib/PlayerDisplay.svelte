@@ -19,7 +19,6 @@
 
 <style>
     .player {
-        background-color: blue;
     }
     .player-answered {
         background-color: green;

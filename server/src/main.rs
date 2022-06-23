@@ -35,7 +35,12 @@ impl Player {
     pub fn new(name: String, is_host: bool, sender: mpsc::UnboundedSender<Message>) -> Self {
         let public_id = uuid::Uuid::new_v4().to_string();
         let private_id = uuid::Uuid::new_v4().to_string();
-        let info = PlayerInfo { name, public_id, is_host, has_answer: false };
+        let info = PlayerInfo {
+            name,
+            public_id,
+            is_host,
+            has_answer: false,
+        };
         Player {
             private_id,
             info,
@@ -85,33 +90,33 @@ impl Room {
 
 type Rooms = Arc<RwLock<HashMap<String, Arc<RwLock<Room>>>>>;
 
-fn room_filter(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn room_filter(
+    rooms: Rooms,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let filter = warp::any().map(move || rooms.clone());
     let cors = warp::cors().allow_any_origin();
 
     // GET /room -> creates a room and returns a path for joining it
-    let room = warp::path("room")
+    warp::path("room")
         .and(filter)
         .and_then(|rooms| async move { new_room(rooms).await })
-        .with(cors);
-
-    room
+        .with(cors)
 }
 
-fn join_filter(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn join_filter(
+    rooms: Rooms,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let filter = warp::any().map(move || rooms.clone());
 
     // GET /join -> websocket upgrade
-    let join = warp::path!("join" / String)
+    warp::path!("join" / String)
         // The `ws()` filter will prepare Websocket handshake...
         .and(warp::ws())
         .and(filter)
         .map(|room_id: String, ws: warp::ws::Ws, rooms| {
             // This will call our function if the handshake succeeds.
             ws.on_upgrade(move |socket| player_connected(socket, rooms, room_id))
-        });
-
-    join
+        })
 }
 
 #[tokio::main]
@@ -155,7 +160,7 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
                 delete_room(&rooms, &room).await;
             },
             abort_registration,
-            );
+        );
         tokio::task::spawn(future);
     }
 
@@ -163,8 +168,8 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
     eprintln!("New room: {}", &room_id);
 
     Ok(Response::builder()
-       .body(format!("/join/{}/", &room_id))
-       .unwrap())
+        .body(format!("/join/{}/", &room_id))
+        .unwrap())
 }
 
 // TODO: test this function
@@ -180,9 +185,16 @@ async fn wait_for_name(client_ws_rcv: &mut SplitStream<WebSocket>) -> Option<Str
             } else {
                 None
             }
-        },
-        _ => None
+        }
+        _ => None,
     }
+}
+
+fn make_hint(answer: &str) -> String {
+    answer
+        .chars()
+        .map(|c| if c != ' ' { '_' } else { c })
+        .collect()
 }
 
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
@@ -215,15 +227,17 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
         let room = room.read().await;
         // Send room's current image dimensions (if they exist) to the new player
         // TODO: consider moving this
-        match (room.image_dimensions, room.answer.clone()) {
-            (Some(dimensions), Some(answer)) => {
-                client_sender
-                    .send(Message::text(
-                            serde_json::to_string(&OutboundWsEvent::NewImage { dimensions }).unwrap(),
-                            ))
-                    .expect("Error sending new-image");
-            }
-            (_, _) => {}
+        if let (Some(dimensions), Some(answer)) = (room.image_dimensions, room.answer.clone()) {
+            let answer_hint = make_hint(&answer);
+            client_sender
+                .send(Message::text(
+                    serde_json::to_string(&OutboundWsEvent::NewImage {
+                        dimensions,
+                        answer_hint: &answer_hint,
+                    })
+                    .unwrap(),
+                ))
+                .expect("Error sending new-image");
         }
     }
 
@@ -243,7 +257,7 @@ async fn connect_player(
     rooms: Rooms,
     room: Arc<RwLock<Room>>,
     mut client_ws_rcv: SplitStream<WebSocket>,
-    ) {
+) {
     let private_id = player.private_id.clone();
     {
         let mut room = room.write().await;
@@ -284,7 +298,33 @@ async fn connect_player(
     user_disconnected(&private_id, &rooms, room).await;
 }
 
-fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Result<(), &'static str> {
+fn handle_round_over(room: &mut Room) {
+    // Set everyone's has_answer to false
+    room.players
+        .iter_mut()
+        .for_each(|mut p| p.info.has_answer = false);
+
+    // Update the host
+    let host_index = room
+        .players
+        .iter()
+        .position(|p| p.info.is_host)
+        .expect("no host in room");
+
+    room.players[host_index].info.is_host = false;
+
+    let host_index = (host_index + 1) % room.players.len();
+    room.players[host_index].info.is_host = true;
+
+    // Broadcast player info when we're done
+    broadcast_player_list(room);
+}
+
+fn handle_chat_message(
+    message: &str,
+    private_id: &str,
+    room: &mut Room,
+) -> Result<(), &'static str> {
     if message.is_empty() {
         return Err("Empty message");
     }
@@ -293,12 +333,26 @@ fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Resu
         let mut player = room.get_player_mut(private_id).ok_or("Player not found")?;
         // Player guessed correctly
         player.info.has_answer = true;
-        send_player_correct_answer(&player, &message);
-        broadcast_player_list(&room);
+
+        send_player_correct_answer(player, message);
+        broadcast_player_list(room);
+
+        // Check if all non-host players have finished
+        let round_over = room
+            .players
+            .iter()
+            .filter(|p| !p.info.is_host)
+            .all(|p| p.info.has_answer);
+        if round_over {
+            handle_round_over(room);
+        }
     } else {
         let player = room.get_player(private_id).ok_or("Player not found")?;
-        let event = OutboundWsEvent::ChatMessage { name: &player.info.name, text: message };
-        broadcast_ws_event(event, &room);
+        let event = OutboundWsEvent::ChatMessage {
+            name: &player.info.name,
+            text: message,
+        };
+        broadcast_ws_event(event, room);
     }
 
     Ok(())
@@ -318,9 +372,8 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
         Err(e) => {
             eprintln!("Failed to deserialize message {:?}", e);
             return;
-        },
+        }
     };
-
 
     // Handle WsEvents which can come from any user
     let mut room = room.write().await;
@@ -332,7 +385,7 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
             }
         }
         _ => {
-            let player = match room.get_player_mut(&private_id) {
+            let player = match room.get_player_mut(private_id) {
                 Some(p) => p,
                 None => return,
             };
@@ -356,7 +409,11 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
                     room.circles.clear();
                     // Let everyone know there's a new image
 
-                    let event = OutboundWsEvent::NewImage { dimensions };
+                    let answer_hint = make_hint(answer);
+                    let event = OutboundWsEvent::NewImage {
+                        dimensions,
+                        answer_hint: &answer_hint,
+                    };
                     broadcast_ws_event(event, &room);
                 }
                 _ => {
@@ -462,10 +519,10 @@ fn broadcast_player_list(room: &Room) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Rooms, room_filter, join_filter, new_room, OutboundWsEvent};
+    use crate::{join_filter, new_room, room_filter, OutboundWsEvent, Rooms};
+    use image::Rgba;
     use shape_evolution::random_shape::RandomCircle;
     use warp::Filter;
-    use image::Rgba;
 
     #[tokio::test]
     async fn test_new_room() {
@@ -475,13 +532,10 @@ mod tests {
 
         assert_eq!(rooms.read().await.len(), 0);
 
-        let res = warp::test::request()
-            .path("/room")
-            .reply(&room).await;
+        let res = warp::test::request().path("/room").reply(&room).await;
 
         assert_eq!(res.status(), 200);
         assert_eq!(rooms.read().await.len(), 1);
-
     }
 
     #[ignore]
@@ -493,9 +547,7 @@ mod tests {
 
         assert_eq!(rooms.read().await.len(), 0);
 
-        let res = warp::test::request()
-            .path("/room")
-            .reply(&room).await;
+        let res = warp::test::request().path("/room").reply(&room).await;
 
         assert_eq!(rooms.read().await.len(), 1);
 
@@ -513,9 +565,7 @@ mod tests {
 
         assert_eq!(rooms.read().await.len(), 0);
 
-        let res = warp::test::request()
-            .path("/room")
-            .reply(&room).await;
+        let res = warp::test::request().path("/room").reply(&room).await;
         let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
 
         let mut ws = warp::test::ws()
@@ -547,9 +597,7 @@ mod tests {
 
         assert_eq!(rooms.read().await.len(), 0);
 
-        let res = warp::test::request()
-            .path("/room")
-            .reply(&room).await;
+        let res = warp::test::request().path("/room").reply(&room).await;
         let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
 
         let mut ws = warp::test::ws()
@@ -561,7 +609,8 @@ mod tests {
         ws.send_text("{\"PlayerName\": \"Alice\"}").await;
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}").await;
+        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}")
+            .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         let circle = RandomCircle {
@@ -569,9 +618,10 @@ mod tests {
             imgy: 200,
             center: (50, 50),
             radius: 20,
-            color: Rgba([255, 0, 0, 255])
+            color: Rgba([255, 0, 0, 255]),
         };
-        ws.send_text(serde_json::to_string(&OutboundWsEvent::Circle(circle)).unwrap()).await;
+        ws.send_text(serde_json::to_string(&OutboundWsEvent::Circle(circle)).unwrap())
+            .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         {
@@ -581,7 +631,8 @@ mod tests {
             assert_eq!(room.circles.len(), 1);
         }
 
-        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}").await;
+        ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}")
+            .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         {
