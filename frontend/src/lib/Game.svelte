@@ -81,7 +81,6 @@
                 is_host = payload;
                 break;
             case "Answer":
-                alert(payload);
                 break;
             case "ChatMessage":
                 // We can't just use messages.push(), since the mutation will not trigger an update on its own.
