@@ -279,6 +279,7 @@ async fn connect_player(
         send_private_info(player);
         broadcast_player_list(&room);
         send_current_circles(player, &room);
+        broadcast_server_message(&format!("{} joined", player.info.name), &room);
     }
 
     // Every time the host sends a message, broadcast it to
@@ -336,7 +337,8 @@ fn handle_chat_message(
         player.info.has_answer = true;
 
         send_player_correct_answer(player, message);
-        broadcast_player_list(room);
+        broadcast_server_message(&format!("{} got it right", player.info.name), &room);
+        broadcast_player_list(&room);
 
         // Check if all non-host players have finished
         let round_over = room
@@ -462,6 +464,8 @@ async fn user_disconnected(private_id: &str, rooms: Rooms, room: Arc<RwLock<Room
             }
             players[i].info.is_host = true;
         }
+
+        broadcast_server_message(&format!("{} left", removed_player.info.name), &room);
     }
 
     let mut room = room.write().await;
@@ -516,6 +520,11 @@ fn broadcast_player_list(room: &Room) {
     let player_list = OutboundWsEvent::PlayerList(room.players.iter().map(|p| &p.info).collect());
 
     broadcast_ws_event(player_list, room);
+}
+
+fn broadcast_server_message(message: &str, room: &Room) {
+    let server_message = OutboundWsEvent::ServerMessage(message);
+    broadcast_ws_event(server_message, room);
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 <script>
     import { sendWsEvent } from '../lib/Websocket.svelte';
     import ChatMessage from '../lib/ChatMessage.svelte';
+    import ServerMessage from '../lib/ServerMessage.svelte';
     export let websocket;
     export let messages;
     let chat_message = "";
@@ -51,7 +52,11 @@
         <div class=scrollable>
             {#each messages as message}
                 <div class=message>
-                    <ChatMessage class=message {...message} />
+                    {#if typeof message === 'string'}
+                        <ServerMessage text={message} />
+                    {:else}
+                        <ChatMessage {...message} />
+                    {/if}
                 </div>
             {/each}
         </div>

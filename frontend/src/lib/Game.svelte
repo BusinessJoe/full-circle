@@ -89,6 +89,9 @@
                 // We can't just use messages.push(), since the mutation will not trigger an update on its own.
                 messages = [...messages, payload];
                 break;
+            case "ServerMessage":
+                messages = [...messages, payload];
+                break;
             default:
                 console.error(`Type ${type} not recognized`);
                 break;

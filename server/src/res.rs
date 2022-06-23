@@ -11,11 +11,13 @@ pub enum OutboundWsEvent<'a> {
         answer_hint: &'a str,
     },
     PlayerList(Vec<&'a PlayerInfo>),
+    // Info which also contains a player's private id
     PrivateInfo(&'a Player),
     ChatMessage {
         name: &'a str,
         text: &'a str,
     },
+    ServerMessage(&'a str),
     Answer(&'a str),
 }
 
