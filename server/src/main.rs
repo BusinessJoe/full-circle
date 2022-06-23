@@ -71,6 +71,23 @@ impl Room {
         }
     }
 
+    pub fn wait_then_cleanup(&mut self, rooms: Rooms, duration: Duration) {
+        println!("Deleting room {} in {:?}", &self.id, &duration);
+        // Start an abortable cleanup task for this room.
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        self.cleanup_abort_handle = Some(abort_handle);
+
+        let room_id = self.id.clone();
+        let future = Abortable::new(
+            async move {
+                tokio::time::sleep(duration).await;
+                delete_room(&rooms, &room_id).await;
+            },
+            abort_registration,
+        );
+        tokio::task::spawn(future);
+    }
+
     pub fn cancel_cleanup(&mut self) {
         if let Some(abort_handle) = &self.cleanup_abort_handle {
             println!("Cancelling cleanup for room {}", &self.id);
@@ -143,28 +160,12 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
 
     let mut new_room = Room::new(room_id.clone());
 
-    let (abort_handle, abort_registration) = AbortHandle::new_pair();
-    new_room.cleanup_abort_handle = Some(abort_handle);
+    new_room.wait_then_cleanup(rooms.clone(), Duration::from_secs(5 * 60));
 
-    // Wrap room in a reference counted lock
-    let new_room = Arc::new(RwLock::new(new_room));
-
-    // Start an abortable cleanup task for this room.
-    {
-        let rooms = rooms.clone();
-        let room = new_room.clone();
-        let future = Abortable::new(
-            async move {
-                tokio::time::sleep(Duration::new(5, 0)).await;
-                let room = room.read().await;
-                delete_room(&rooms, &room).await;
-            },
-            abort_registration,
-        );
-        tokio::task::spawn(future);
-    }
-
-    rooms.write().await.insert(room_id.clone(), new_room);
+    rooms
+        .write()
+        .await
+        .insert(room_id.clone(), Arc::new(RwLock::new(new_room)));
     eprintln!("New room: {}", &room_id);
 
     Ok(Response::builder()
@@ -295,7 +296,7 @@ async fn connect_player(
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(&private_id, &rooms, room).await;
+    user_disconnected(&private_id, rooms, room).await;
 }
 
 fn handle_round_over(room: &mut Room) {
@@ -424,15 +425,15 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
     }
 }
 
-async fn delete_room(rooms: &Rooms, room: &Room) {
+async fn delete_room(rooms: &Rooms, room_id: &str) {
     {
         let mut rooms = rooms.write().await;
-        rooms.remove(&room.id);
+        rooms.remove(room_id);
     }
-    eprintln!("Deleted room {}", &room.id);
+    eprintln!("Deleted room {}", &room_id);
 }
 
-async fn user_disconnected(private_id: &str, rooms: &Rooms, room: Arc<RwLock<Room>>) {
+async fn user_disconnected(private_id: &str, rooms: Rooms, room: Arc<RwLock<Room>>) {
     {
         let mut room = room.write().await;
 
@@ -463,10 +464,10 @@ async fn user_disconnected(private_id: &str, rooms: &Rooms, room: Arc<RwLock<Roo
         }
     }
 
-    let room = room.read().await;
+    let mut room = room.write().await;
     if room.players.is_empty() {
-        // Delete the room if it has no more players
-        delete_room(rooms, &room).await;
+        // Start a cleanup process
+        room.wait_then_cleanup(rooms, Duration::from_secs(60));
     } else {
         // otherwise let everyone know who is still connected
         broadcast_player_list(&room);
