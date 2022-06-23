@@ -1,5 +1,6 @@
 <script>
     import { sendWsEvent } from '../lib/Websocket.svelte';
+    import ChatMessage from '../lib/ChatMessage.svelte';
     export let websocket;
     export let messages;
     let chat_message = "";
@@ -21,23 +22,26 @@
         flex-direction: column;
         justify-content: flex-end;
         height: 100%;
-        background-color: red;
+        width: 200px;
     }
 
     .messages {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column-reverse;
-        overflow-y: scroll;
+        overflow-y: auto;
     }
 
     .scrollable {
         width: 100%;
-        background-color: green;
     }
 
     .chatbox {
         height: 1.3em;
+    }
+
+    .message {
+        margin: 0.5em 0.2em 0.5em 0.2em;
     }
 </style>
 
@@ -46,8 +50,8 @@
     <div class=messages>
         <div class=scrollable>
             {#each messages as message}
-                <div>
-                    {message}
+                <div class=message>
+                    <ChatMessage class=message {...message} />
                 </div>
             {/each}
         </div>

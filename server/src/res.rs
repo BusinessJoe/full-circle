@@ -2,20 +2,29 @@ use crate::{Player, PlayerInfo};
 use serde::{Deserialize, Serialize};
 use shape_evolution::random_shape::RandomCircle;
 
-#[derive(Serialize, Deserialize)]
-pub enum WsEvent<'a> {
+#[derive(Debug, Serialize)]
+pub enum OutboundWsEvent<'a> {
     Circle(RandomCircle),
-
-    #[serde(skip_deserializing)]
     CircleSequence(Vec<RandomCircle>),
-    NewImage { dimensions: (u32, u32) },
-    #[serde(skip_deserializing)]
-    RoomPath(String),
-    #[serde(skip_deserializing)]
-    PlayerList(Vec<PlayerInfo>),
-    #[serde(skip_deserializing)]
+    NewImage { 
+        dimensions: (u32, u32), 
+    },
+    PlayerList(Vec<&'a PlayerInfo>),
     PrivateInfo(&'a Player),
+    ChatMessage {
+        name: &'a str,
+        text: &'a str,
+    },
+    Answer(&'a str),
+}
 
-    #[serde(skip_serializing)]
-    PlayerName(String),
+#[derive(Debug, Deserialize)]
+pub enum InboundWsEvent<'a> {
+    Circle(RandomCircle),
+    ChatMessage(&'a str),
+    NewImage { 
+        dimensions: (u32, u32), 
+        answer: String 
+    },
+    PlayerName(&'a str),
 }
