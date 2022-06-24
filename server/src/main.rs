@@ -331,7 +331,7 @@ fn handle_chat_message(
         return Err("Empty message");
     }
 
-    if room.answer == Some(message.to_string()) {
+    if room.answer == Some(message.to_lowercase()) {
         let mut player = room.get_player_mut(private_id).ok_or("Player not found")?;
         // Player guessed correctly
         player.info.has_answer = true;
@@ -408,7 +408,7 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
                 }
                 InboundWsEvent::NewImage { dimensions, answer } => {
                     room.image_dimensions = Some(dimensions);
-                    room.answer = Some(answer.to_string());
+                    room.answer = Some(answer.to_lowercase());
                     room.circles.clear();
                     // Let everyone know there's a new image
 
