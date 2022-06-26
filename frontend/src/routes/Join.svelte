@@ -12,7 +12,7 @@
 
 {#if !submit}
     <form on:submit|preventDefault={() => { submit = true; }}>
-        <input bind:value={name} />
+        <input bind:value={name} maxlength={20} />
         <button type="submit" >
             Go
         </button>

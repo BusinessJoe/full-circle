@@ -16,7 +16,7 @@
 
 {#if show}
     <input type="file" data-testid="image-input" bind:files/>
-    <input type="text" data-testid="answer-input" bind:value={name}/>
+    <input type="text" data-testid="answer-input" bind:value={name} maxlength="20" />
 
     <button data-testid="submit-button" on:click={_onSubmit}>
         Ok

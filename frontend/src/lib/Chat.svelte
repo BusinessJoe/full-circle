@@ -61,5 +61,5 @@
             {/each}
         </div>
     </div>
-    <input class=chatbox type="text" bind:value={chat_message} on:keypress={handleKey} />
+    <input class=chatbox type="text" bind:value={chat_message} on:keypress={handleKey} maxlength="50" />
 </div>
