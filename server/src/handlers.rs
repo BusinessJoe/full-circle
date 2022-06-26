@@ -127,7 +127,7 @@ pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<R
 
     match event {
         InboundWsEvent::ChatMessage(message) => {
-            if let Err(e) = handle_chat_message(message, private_id, &mut room) {
+            if let Err(e) = handle_chat_message(&message, private_id, &mut room) {
                 eprintln!("Error: {}", e);
             }
         }
