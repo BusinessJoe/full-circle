@@ -55,6 +55,105 @@ pub async fn handle_user_disconnected(private_id: &str, rooms: Rooms, room: Arc<
 }
 
 
+pub async fn handle_upload_image(
+    rooms: Rooms, 
+    room_id: String, 
+    private_player_id: String, 
+    bytes: warp::hyper::body::Bytes
+) -> Result<impl warp::Reply, warp::Rejection> {
+    eprintln!("handling image upload");
+    let rooms = rooms.read().await;
+
+    if let Some(room) = rooms.get(&room_id) {
+        let mut room = room.write().await;
+
+        match room.get_player_from_private_id(&private_player_id) {
+            Some(player) if player.info.is_host => {
+                room.image_data = Some(bytes.into_iter().collect());
+                Ok(warp::reply::with_status("Uploaded image", warp::http::status::StatusCode::OK))
+            },
+            _ => Err(warp::reject::reject())
+        }
+    } else {
+        Err(warp::reject::reject())
+    }
+}
+
+
+pub async fn handle_binary_message(private_id: &str, msg: Vec<u8>, room: Arc<RwLock<Room>>) {
+    eprintln!("Got binary data");
+    let mut room = room.write().await;
+    let player = match room.get_player_mut_from_private_id(private_id) {
+        Some(p) => p,
+        None => return,
+    };
+
+    if player.info.is_host {
+        room.image_data = Some(msg);
+    }
+}
+
+
+pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<Room>>) {
+    // Try parsing the message into a WsEvent
+    let event: InboundWsEvent = match serde_json::from_str(msg) {
+        Ok(event) => event,
+        Err(e) => {
+            eprintln!("Failed to deserialize message {:?}", e);
+            return;
+        }
+    };
+
+    // Handle WsEvents which can come from any user
+    let mut room = room.write().await;
+
+    match event {
+        InboundWsEvent::ChatMessage(message) => {
+            if let Err(e) = handle_chat_message(&message, private_id, &mut room) {
+                eprintln!("Error: {}", e);
+            }
+        }
+        _ => {
+            let player = match room.get_player_mut_from_private_id(private_id) {
+                Some(p) => p,
+                None => return,
+            };
+
+            // Try handling event as host
+            if !player.info.is_host {
+                eprintln!("Rejecting message from player {}", private_id);
+                return;
+            }
+
+            match event {
+                InboundWsEvent::Circle(circle) => {
+                    room.circles.push(circle.clone());
+                    // Let everyone know there's a new circle
+                    let event = OutboundWsEvent::Circle(circle);
+                    broadcast_ws_event(event, &room);
+                }
+                InboundWsEvent::NewImage { dimensions, answer } => {
+                    room.image_dimensions = Some(dimensions);
+                    room.answer = Some(answer.to_lowercase());
+                    room.circles.clear();
+                    // Let everyone know there's a new image
+
+                    let answer_hint = make_hint(answer);
+                    let event = OutboundWsEvent::NewImage {
+                        dimensions,
+                        answer_hint: &answer_hint,
+                    };
+                    broadcast_ws_event(event, &room);
+                }
+                _ => {
+                    eprintln!("Unsupported message type");
+                }
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,75 +197,3 @@ mod tests {
 }
 
 
-pub async fn handle_binary_message(private_id: &str, msg: Vec<u8>, room: Arc<RwLock<Room>>) {
-    eprintln!("Got binary data");
-    let mut room = room.write().await;
-    let player = match room.get_player_mut(private_id) {
-        Some(p) => p,
-        None => return,
-    };
-
-    if player.info.is_host {
-        room.image_data = Some(msg);
-    }
-}
-
-
-pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<Room>>) {
-    // Try parsing the message into a WsEvent
-    let event: InboundWsEvent = match serde_json::from_str(msg) {
-        Ok(event) => event,
-        Err(e) => {
-            eprintln!("Failed to deserialize message {:?}", e);
-            return;
-        }
-    };
-
-    // Handle WsEvents which can come from any user
-    let mut room = room.write().await;
-
-    match event {
-        InboundWsEvent::ChatMessage(message) => {
-            if let Err(e) = handle_chat_message(&message, private_id, &mut room) {
-                eprintln!("Error: {}", e);
-            }
-        }
-        _ => {
-            let player = match room.get_player_mut(private_id) {
-                Some(p) => p,
-                None => return,
-            };
-
-            // Try handling event as host
-            if !player.info.is_host {
-                eprintln!("Rejecting message from player {}", private_id);
-                return;
-            }
-
-            match event {
-                InboundWsEvent::Circle(circle) => {
-                    room.circles.push(circle.clone());
-                    // Let everyone know there's a new circle
-                    let event = OutboundWsEvent::Circle(circle);
-                    broadcast_ws_event(event, &room);
-                }
-                InboundWsEvent::NewImage { dimensions, answer } => {
-                    room.image_dimensions = Some(dimensions);
-                    room.answer = Some(answer.to_lowercase());
-                    room.circles.clear();
-                    // Let everyone know there's a new image
-
-                    let answer_hint = make_hint(answer);
-                    let event = OutboundWsEvent::NewImage {
-                        dimensions,
-                        answer_hint: &answer_hint,
-                    };
-                    broadcast_ws_event(event, &room);
-                }
-                _ => {
-                    eprintln!("Unsupported message type");
-                }
-            }
-        }
-    }
-}

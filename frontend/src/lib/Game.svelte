@@ -6,12 +6,10 @@
     import ImagePicker from '../lib/ImagePicker.svelte';
     import Chat from '../lib/Chat.svelte';
 
+    export let room_id;
     export let websocket_url;
+    export let api_origin;
     export let name;
-
-    let room_path = "";
-    $: short_room_link = room_path ? location.hostname + room_path : "";
-    $: room_link = room_path ? location.origin + room_path : "";
 
     let worker;
     let worker_ready = false;
@@ -20,6 +18,7 @@
     let players = [];
     let messages = [];
     let public_id;
+    let private_id;
     let width = 100;
     let height = 100;
     let answer = "";
@@ -75,9 +74,6 @@
                     drawCircle(circle);
                 }
                 break;
-            case "RoomPath":
-                room_path = payload;
-                break;
             case "NewImage":
                 const [new_width, new_height] = payload.dimensions;
                 width = new_width;
@@ -90,6 +86,7 @@
             case "PrivateInfo":
                 console.log(payload);
                 public_id = payload.info.public_id;
+                private_id = payload.private_id;
                 break;
             case "PlayerList":
                 players = payload;
@@ -144,9 +141,18 @@
 
     function onSubmit(buf, ans) {
         answer = ans;
+        console.log('sending image data:', buf);
+        console.log(`${api_origin}/image`);
+        fetch(`${api_origin}/image`, {
+            method: 'POST',
+            headers: {
+                "room-id": room_id,
+                "private-id": private_id,
+            },
+            body: buf,
+        });
+        console.log('sent image data');
         worker.postMessage({ type: "init/buffer", payload: buf });
-        console.log('sending binary:', buf);
-        websocket.send(buf);
     }
 
     function runEpoch() {
@@ -174,9 +180,6 @@
             <span class=hint>
                 {answer_hint}
             </span>
-            <a href={room_link}>
-                {short_room_link}
-            </a>
             {#if display_controls}
                 <ImagePicker onSubmit={onSubmit} />
             {/if}

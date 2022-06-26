@@ -28,7 +28,6 @@ pub enum InboundWsEvent<'a> {
     // This cannot just be a `&'a str` type because it would not be able to handle escaped text.
     // The text needs to be processed (to turn things strings `a\"b` into `a"b`) so a simple
     // reference does not work.
-    #[serde(borrow)]
     ChatMessage(Cow<'a, str>),
     NewImage {
         dimensions: (u32, u32),

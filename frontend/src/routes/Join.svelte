@@ -3,7 +3,8 @@
 
     export let room_id;
 
-    const url = 'ws://' + location.hostname + ':3001/join/' + room_id;
+    const ws_url = 'ws://' + location.hostname + ':3001/join/' + room_id;
+    const api_origin = 'http://' + location.hostname + ':3001';
 
     let name = "";
     let submit = false;
@@ -17,5 +18,5 @@
         </button>
     </form>
 {:else}
-    <Game websocket_url={url} name={name} />
+    <Game room_id={room_id} api_origin={api_origin} websocket_url={ws_url} name={name} />
 {/if}

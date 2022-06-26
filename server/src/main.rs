@@ -1,3 +1,6 @@
+mod res;
+mod handlers;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -12,10 +15,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
 use warp::{http::Response, Filter};
 
-mod res;
 use res::{InboundWsEvent, OutboundWsEvent};
-
-mod handlers;
 
 /// Public facing info about a player - we aren't worried about
 /// other players knowing this data.
@@ -108,11 +108,11 @@ impl Room {
         self.players.push(player);
     }
 
-    pub fn get_player(&self, private_id: &str) -> Option<&Player> {
+    pub fn get_player_from_private_id(&self, private_id: &str) -> Option<&Player> {
         self.players.iter().find(|p| p.private_id == private_id)
     }
 
-    pub fn get_player_mut(&mut self, private_id: &str) -> Option<&mut Player> {
+    pub fn get_player_mut_from_private_id(&mut self, private_id: &str) -> Option<&mut Player> {
         self.players.iter_mut().find(|p| p.private_id == private_id)
     }
 }
@@ -123,6 +123,7 @@ fn room_filter(
     rooms: Rooms,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let filter = warp::any().map(move || rooms.clone());
+    // TODO: 
     let cors = warp::cors().allow_any_origin();
 
     // GET /room -> creates a room and returns a path for joining it
@@ -140,12 +141,35 @@ fn join_filter(
     // GET /join -> websocket upgrade
     warp::path!("join" / String)
         // The `ws()` filter will prepare Websocket handshake...
+        // Limit websocket message size to 1kb
         .and(warp::ws())
         .and(filter)
         .map(|room_id: String, ws: warp::ws::Ws, rooms| {
             // This will call our function if the handshake succeeds.
-            ws.on_upgrade(move |socket| player_connected(socket, rooms, room_id))
+            ws
+                .max_message_size(1024)
+                .on_upgrade(move |socket| player_connected(socket, rooms, room_id))
         })
+}
+
+fn post_image(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let rooms = warp::any().map(move || rooms.clone());
+    // TODO: 
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["POST"])
+        .allow_headers(vec!["Origin", "Access-Control-Request-Method",
+        "Access-Control-Request-Headers", "Authorization", "content-type", "room-id", "private-id"]);
+
+    warp::path!("image")
+        .and(warp::post())
+        .and(rooms)
+        .and(warp::header::<String>("room-id"))
+        .and(warp::header::<String>("private-id"))
+        .and(warp::body::content_length_limit(1024 * 1024 * 8))
+        .and(warp::body::bytes())
+        .and_then(handlers::handle_upload_image)
+        .with(cors)
 }
 
 #[tokio::main]
@@ -157,7 +181,9 @@ async fn main() {
     let room = room_filter(rooms.clone());
     let join = join_filter(rooms.clone());
 
-    let routes = room.or(join);
+    let routes = room
+        .or(join)
+        .or(post_image(rooms.clone()));
 
     warp::serve(routes).run(([0, 0, 0, 0], 3001)).await;
 }
@@ -181,7 +207,10 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
     eprintln!("New room: {}", &room_id);
 
     Ok(Response::builder()
-        .body(format!("/join/{}/", &room_id))
+        .body(serde_json::json!({
+            "id": &room_id,
+            "path": format!("/join/{}", &room_id)
+        }).to_string())
         .unwrap())
 }
 
@@ -350,7 +379,7 @@ fn handle_chat_message(
     }
 
     if room.answer == Some(message.to_lowercase()) {
-        let mut player = room.get_player_mut(private_id).ok_or("Player not found")?;
+        let mut player = room.get_player_mut_from_private_id(private_id).ok_or("Player not found")?;
         // Player guessed correctly
         player.info.has_answer = true;
 
@@ -368,7 +397,7 @@ fn handle_chat_message(
             handle_round_over(room);
         }
     } else {
-        let player = room.get_player(private_id).ok_or("Player not found")?;
+        let player = room.get_player_from_private_id(private_id).ok_or("Player not found")?;
         let event = OutboundWsEvent::ChatMessage {
             name: &player.info.name,
             text: message,
@@ -384,6 +413,9 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
     if let Ok(msg) = msg.to_str() {
         handlers::handle_text_message(private_id, msg, room).await;
     } else {
+        eprintln!("Ignoring binary data");
+        return;
+
         let msg = msg.into_bytes();
         handlers::handle_binary_message(private_id, msg, room).await;
     };

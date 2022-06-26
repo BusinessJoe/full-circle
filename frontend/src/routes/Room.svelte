@@ -7,7 +7,8 @@
             method: 'GET',
         });
 
-        return await res.text();
+        let json = await res.json();
+        return json.path;
     }
 
     //create_room().then(room_id => {
