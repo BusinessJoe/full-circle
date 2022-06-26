@@ -24,6 +24,7 @@
     let height = 100;
     let answer = "";
     let answer_hint = "";
+    let round_over = true;
 
     $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
     $: display_controls = is_host && worker_ready;
@@ -54,6 +55,18 @@
     function onEvent(type, payload) {
         console.log("Event:", type);
         switch (type) {
+            case "binary":
+                const canvas = document.getElementById("source-image");
+                const ctx = canvas.getContext("2d");
+
+                createImageBitmap(payload).then(image => {
+                    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                });
+                console.log('binary', payload);
+
+                console.log("round is over");
+                round_over = true;
+                break;
             case "Circle":
                 drawCircle(payload);
                 break;
@@ -72,6 +85,7 @@
                 console.log("new canvas dimensions:", width, height);
 
                 answer_hint = payload.answer_hint;
+                round_over = false;
                 break;
             case "PrivateInfo":
                 console.log(payload);
@@ -131,6 +145,8 @@
     function onSubmit(buf, ans) {
         answer = ans;
         worker.postMessage({ type: "init/buffer", payload: buf });
+        console.log('sending binary:', buf);
+        websocket.send(buf);
     }
 
     function runEpoch() {
@@ -167,13 +183,29 @@
             <div>
                 You are {public_id}, host: {is_host}
             </div>
-            <div id="canvas-wrapper" class={width > height ? "canvas-wrapper-landscape" : "canvas-wrapper-portrait"}>
-                <canvas id="canvas" width={width} height={height} class={width > height ? "canvas-landscape" : "canvas-portrait"} />
+            <div id="canvas-wrapper" 
+                class="canvas-wrapper"
+                class:canvas-wrapper-landscape={width > height}
+                class:canvas-wrapper-portrait={!(width > height)}
+            >
+                <canvas id="canvas" width={width} height={height} 
+                    class="canvas"
+                    class:canvas-landscape={width > height}
+                    class:canvas-portrait={!(width > height)}
+                />
+                <canvas id="source-image" width={width} height={height} 
+                    class="canvas"
+                    class:fade={round_over}
+                    class:hide={!round_over}
+                    class:canvas-landscape={width > height}
+                    class:canvas-portrait={!(width > height)}
+                />
             </div>
         </div>
         <Chat websocket={websocket} messages={messages} />
     </div>
 </main>
+
 
 <style>
     :root {
@@ -181,16 +213,6 @@
             Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
             background-color: #1e1e1e;
             color: white;
-    }
-
-    h1 {
-        color: #ff3e00;
-        text-transform: uppercase;
-        font-size: 2rem;
-        font-weight: 100;
-        line-height: 1.1;
-        margin: 0.5rem 0;
-        max-width: 14rem;
     }
 
     main {
@@ -219,9 +241,31 @@
         justify-content: center;
     }
 
-    #canvas {
+    @keyframes fadeIn {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+    }
+    .fade {
+        animation: fadeIn 2.0s;
+        transition: opacity 0.3s;
+    }
+
+    .fade:hover {
+        opacity: 0%;
+    }
+
+    .hide {
+        visibility: hidden;
+    }
+
+    .canvas {
         border: 1px solid white;
         background-color: #000;
+        position: absolute;
+    }
+
+    .canvas-wrapper {
+        position: relative;
     }
 
     .canvas-wrapper-landscape {

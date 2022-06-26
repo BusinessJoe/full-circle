@@ -11,10 +11,14 @@
             sendWsEvent(ws, "PlayerName", name);
         };
         ws.onmessage = (message) => {
-            const data = JSON.parse(message.data);
-            const type = Object.keys(data)[0];
-            const payload = data[type];
-            onEvent(type, payload);
+            if (message.data instanceof Blob) {
+                onEvent("binary", message.data);
+            } else {
+                const data = JSON.parse(message.data);
+                const type = Object.keys(data)[0];
+                const payload = data[type];
+                onEvent(type, payload);
+            }
         };
 
         return ws;
