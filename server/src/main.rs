@@ -1,5 +1,6 @@
-mod res;
 mod handlers;
+mod res;
+mod utils;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -53,15 +54,35 @@ impl Player {
 
 type Players = Vec<Player>;
 
+#[derive(Debug, Deserialize)]
+pub struct Round {
+    #[serde(skip_deserializing)]
+    circles: Vec<RandomCircle>,
+    #[serde(deserialize_with = "utils::deserialize_base64")]
+    image_data: Vec<u8>,
+    image_dimensions: (u32, u32),
+    #[serde(deserialize_with = "utils::deserialize_lowercase")]
+    answer: String,
+}
+
+impl Round {
+    pub fn add_circle(&mut self, circle: RandomCircle) {
+        self.circles.push(circle);
+    }
+
+    pub fn answer_hint(&self) -> String {
+        utils::make_hint(&self.answer)
+    }
+
+    pub fn is_correct_answer(&self, s: &str) -> bool {
+        self.answer == s
+    }
+}
+
 pub struct Room {
     id: String,
     players: Players,
-    circles: Vec<RandomCircle>,
-
-    image_dimensions: Option<(u32, u32)>,
-    answer: Option<String>,
-    image_data: Option<Vec<u8>>,
-
+    round: Option<Round>,
     cleanup_abort_handle: Option<AbortHandle>,
 }
 impl Room {
@@ -69,11 +90,8 @@ impl Room {
         Room {
             id,
             players: Players::default(),
-            circles: Vec::new(),
 
-            image_dimensions: None,
-            answer: None,
-            image_data: None,
+            round: None,
 
             cleanup_abort_handle: None,
         }
@@ -115,6 +133,34 @@ impl Room {
     pub fn get_player_mut_from_private_id(&mut self, private_id: &str) -> Option<&mut Player> {
         self.players.iter_mut().find(|p| p.private_id == private_id)
     }
+
+    pub fn end_round(&mut self) {
+        // Set everyone's has_answer to false
+        self.players
+            .iter_mut()
+            .for_each(|mut p| p.info.has_answer = false);
+
+        // Update the host
+        let host_index = self
+            .players
+            .iter()
+            .position(|p| p.info.is_host)
+            .expect("no host in room");
+        self.players[host_index].info.is_host = false;
+        let host_index = (host_index + 1) % self.players.len();
+        self.players[host_index].info.is_host = true;
+
+        // Broadcast player info and source image when we're done
+        broadcast_source_image(self);
+        broadcast_player_list(self);
+        if let Some(round) = &self.round {
+            broadcast_server_message(&format!(r#"The answer was "{}""#, round.answer), self);
+        } else {
+            eprintln!("Error: room had no round");
+        }
+
+        self.round = None;
+    }
 }
 
 type Rooms = Arc<RwLock<HashMap<String, Arc<RwLock<Room>>>>>;
@@ -123,7 +169,7 @@ fn room_filter(
     rooms: Rooms,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let filter = warp::any().map(move || rooms.clone());
-    // TODO: 
+    // TODO:
     let cors = warp::cors().allow_any_origin();
 
     // GET /room -> creates a room and returns a path for joining it
@@ -138,7 +184,6 @@ fn join_filter(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let filter = warp::any().map(move || rooms.clone());
 
-    // GET /join -> websocket upgrade
     warp::path!("join" / String)
         // The `ws()` filter will prepare Websocket handshake...
         // Limit websocket message size to 1kb
@@ -146,20 +191,28 @@ fn join_filter(
         .and(filter)
         .map(|room_id: String, ws: warp::ws::Ws, rooms| {
             // This will call our function if the handshake succeeds.
-            ws
-                .max_message_size(1024)
+            ws.max_message_size(1024)
                 .on_upgrade(move |socket| player_connected(socket, rooms, room_id))
         })
 }
 
-fn post_image(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn post_image(
+    rooms: Rooms,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let rooms = warp::any().map(move || rooms.clone());
-    // TODO: 
+    // TODO:
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["POST"])
-        .allow_headers(vec!["Origin", "Access-Control-Request-Method",
-        "Access-Control-Request-Headers", "Authorization", "content-type", "room-id", "private-id"]);
+        .allow_methods(vec!["OPTIONS", "POST"])
+        .allow_headers(vec![
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Authorization",
+            "content-type",
+            "room-id",
+            "private-id",
+        ]);
 
     warp::path!("image")
         .and(warp::post())
@@ -167,9 +220,11 @@ fn post_image(rooms: Rooms) -> impl Filter<Extract = impl warp::Reply, Error = w
         .and(warp::header::<String>("room-id"))
         .and(warp::header::<String>("private-id"))
         .and(warp::body::content_length_limit(1024 * 1024 * 8))
-        .and(warp::body::bytes())
-        .and_then(handlers::handle_upload_image)
+        .and(warp::body::json())
+        .and_then(handlers::handle_upload_round_data)
+        .recover(handlers::handle_rejection)
         .with(cors)
+        .with(warp::log("round::api"))
 }
 
 #[tokio::main]
@@ -181,9 +236,7 @@ async fn main() {
     let room = room_filter(rooms.clone());
     let join = join_filter(rooms.clone());
 
-    let routes = room
-        .or(join)
-        .or(post_image(rooms.clone()));
+    let routes = room.or(join).or(post_image(rooms.clone()));
 
     warp::serve(routes).run(([0, 0, 0, 0], 3001)).await;
 }
@@ -207,10 +260,13 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
     eprintln!("New room: {}", &room_id);
 
     Ok(Response::builder()
-        .body(serde_json::json!({
-            "id": &room_id,
-            "path": format!("/join/{}", &room_id)
-        }).to_string())
+        .body(
+            serde_json::json!({
+                "id": &room_id,
+                "path": format!("/join/{}", &room_id)
+            })
+            .to_string(),
+        )
         .unwrap())
 }
 
@@ -230,13 +286,6 @@ async fn wait_for_name(client_ws_rcv: &mut SplitStream<WebSocket>) -> Option<Str
         }
         _ => None,
     }
-}
-
-fn make_hint(answer: &str) -> String {
-    answer
-        .chars()
-        .map(|c| if c != ' ' { '_' } else { c })
-        .collect()
 }
 
 async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
@@ -269,8 +318,10 @@ async fn player_connected(ws: WebSocket, rooms: Rooms, room_id: String) {
         let room = room.read().await;
         // Send room's current image dimensions (if they exist) to the new player
         // TODO: consider moving this
-        if let (Some(dimensions), Some(answer)) = (room.image_dimensions, room.answer.clone()) {
-            let answer_hint = make_hint(&answer);
+        if let Some(round) = &room.round {
+            let answer = &round.answer;
+            let dimensions = round.image_dimensions;
+            let answer_hint = utils::make_hint(answer);
             client_sender
                 .send(Message::text(
                     serde_json::to_string(&OutboundWsEvent::NewImage {
@@ -341,34 +392,6 @@ async fn connect_player(
     handlers::handle_user_disconnected(&private_id, rooms, room).await;
 }
 
-fn handle_round_over(room: &mut Room) {
-    // Set everyone's has_answer to false
-    room.players
-        .iter_mut()
-        .for_each(|mut p| p.info.has_answer = false);
-
-    // Update the host
-    let host_index = room
-        .players
-        .iter()
-        .position(|p| p.info.is_host)
-        .expect("no host in room");
-
-    room.players[host_index].info.is_host = false;
-
-    let host_index = (host_index + 1) % room.players.len();
-    room.players[host_index].info.is_host = true;
-
-    // Broadcast player info and source image when we're done
-    broadcast_source_image(room);
-    broadcast_player_list(room);
-    if let Some(answer) = &room.answer {
-        broadcast_server_message(&format!(r#"The answer was "{}""#, answer), &room);
-    } else {
-        eprintln!("Error: room has no answer");
-    }
-}
-
 fn handle_chat_message(
     message: &str,
     private_id: &str,
@@ -377,27 +400,60 @@ fn handle_chat_message(
     if message.is_empty() {
         return Err("Empty message");
     }
+    if let Some(round) = &room.round {
+        let player = room
+            .get_player_from_private_id(private_id)
+            .ok_or("Player not found")?;
 
-    if room.answer == Some(message.to_lowercase()) {
-        let mut player = room.get_player_mut_from_private_id(private_id).ok_or("Player not found")?;
-        // Player guessed correctly
-        player.info.has_answer = true;
+        if player.info.has_answer || player.info.is_host {
+            room.players
+                .iter()
+                .filter(|player| player.info.has_answer || player.info.is_host)
+                .for_each(|player| {
+                    let chat_message = OutboundWsEvent::SecretChatMessage {
+                        name: &player.info.name,
+                        text: message,
+                    };
+                    send_ws_event(chat_message, player);
+                });
+        } else if round.is_correct_answer(message) {
+            let mut player = room
+                .get_player_mut_from_private_id(private_id)
+                .ok_or("Player not found")?;
+            if player.info.is_host {
+                return Err("Player is a host");
+            }
 
-        send_player_correct_answer(player, message);
-        broadcast_server_message(&format!("{} got it right", player.info.name), &room);
-        broadcast_player_list(&room);
+            // Player guessed correctly
+            player.info.has_answer = true;
+            send_player_correct_answer(player, message);
+            broadcast_server_message(&format!("{} got it right", player.info.name), room);
+            broadcast_player_list(room);
 
-        // Check if all non-host players have finished
-        let round_over = room
-            .players
-            .iter()
-            .filter(|p| !p.info.is_host)
-            .all(|p| p.info.has_answer);
-        if round_over {
-            handle_round_over(room);
+            // Check if all non-host players have finished
+            let round_over = room
+                .players
+                .iter()
+                .filter(|p| !p.info.is_host)
+                .all(|p| p.info.has_answer);
+            if round_over {
+                room.end_round();
+            }
+        } else {
+            let player = room
+                .get_player_from_private_id(private_id)
+                .ok_or("Player not found")?;
+            let event = OutboundWsEvent::ChatMessage {
+                name: &player.info.name,
+                text: message,
+            };
+            broadcast_ws_event(event, room);
         }
     } else {
-        let player = room.get_player_from_private_id(private_id).ok_or("Player not found")?;
+        // There is no current round, so no special considerations are needed
+        let player = room
+            .get_player_from_private_id(private_id)
+            .ok_or("Player not found")?;
         let event = OutboundWsEvent::ChatMessage {
             name: &player.info.name,
             text: message,
@@ -413,9 +469,6 @@ async fn handle_user_message(private_id: &str, msg: Message, room: Arc<RwLock<Ro
     if let Ok(msg) = msg.to_str() {
         handlers::handle_text_message(private_id, msg, room).await;
     } else {
-        eprintln!("Ignoring binary data");
-        return;
-
         let msg = msg.into_bytes();
         handlers::handle_binary_message(private_id, msg, room).await;
     };
@@ -436,13 +489,15 @@ fn send_ws_event(event: OutboundWsEvent, player: &Player) {
 }
 
 fn send_current_circles(player: &Player, room: &Room) {
-    // No need to send an empty sequence
-    if room.circles.is_empty() {
-        return;
-    }
+    if let Some(round) = &room.round {
+        // No need to send an empty sequence
+        if round.circles.is_empty() {
+            return;
+        }
 
-    let event = OutboundWsEvent::CircleSequence(room.circles.clone());
-    send_ws_event(event, player);
+        let event = OutboundWsEvent::CircleSequence(round.circles.clone());
+        send_ws_event(event, player);
+    }
 }
 
 fn send_private_info(player: &Player) {
@@ -480,15 +535,14 @@ fn broadcast_server_message(message: &str, room: &Room) {
 
 fn broadcast_source_image(room: &Room) {
     eprintln!("sending binary");
-    if let Some(image_data) = &room.image_data {
-        eprintln!("data length is {}", image_data.len());
+    if let Some(round) = &room.round {
+        eprintln!("data length is {}", round.image_data.len());
         for p in room.players.iter() {
-            let res = p.sender.send(Message::binary(image_data.clone()));
+            let res = p.sender.send(Message::binary(round.image_data.clone()));
             eprintln!("{:?}", res);
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

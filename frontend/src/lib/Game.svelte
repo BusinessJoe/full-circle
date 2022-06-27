@@ -5,6 +5,7 @@
     import PlayerDisplay from '../lib/PlayerDisplay.svelte';
     import ImagePicker from '../lib/ImagePicker.svelte';
     import Chat from '../lib/Chat.svelte';
+    import { arrayBufferToBase64 } from '../lib/utils.js';
 
     export let room_id;
     export let websocket_url;
@@ -21,7 +22,10 @@
     let private_id;
     let width = 100;
     let height = 100;
+
     let answer = "";
+    let buffer = null;
+
     let answer_hint = "";
     let round_over = true;
 
@@ -100,6 +104,10 @@
                 // We can't just use messages.push(), since the mutation will not trigger an update on its own.
                 messages = [...messages, payload];
                 break;
+            case "SecretChatMessage":
+                payload.secret = true;
+                messages = [...messages, payload];
+                break;
             case "ServerMessage":
                 messages = [...messages, payload];
                 break;
@@ -116,7 +124,24 @@
                 break;
             case "init/done":
                 const [width, height] = payload;
-                sendWsEvent(websocket, "NewImage", { dimensions: [width, height], answer });
+
+                let image_data = arrayBufferToBase64(buffer);
+                let image_dimensions = [width, height];
+                fetch(`${api_origin}/image`, {
+                    method: 'POST',
+                    headers: {
+                        "room-id": room_id,
+                        "private-id": private_id,
+                        "content-type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        image_data,
+                        image_dimensions,
+                        answer,
+                    }),
+                });
+                console.log('sent image data');
+
                 runEpoch();
                 break;
             case "epoch/done":
@@ -141,17 +166,7 @@
 
     function onSubmit(buf, ans) {
         answer = ans;
-        console.log('sending image data:', buf);
-        console.log(`${api_origin}/image`);
-        fetch(`${api_origin}/image`, {
-            method: 'POST',
-            headers: {
-                "room-id": room_id,
-                "private-id": private_id,
-            },
-            body: buf,
-        });
-        console.log('sent image data');
+        buffer = buf;
         worker.postMessage({ type: "init/buffer", payload: buf });
     }
 

@@ -1,6 +1,7 @@
 <script>
     export let name;
     export let text;
+    export let secret;
 </script>
 
 
@@ -8,10 +9,14 @@
     div {
         overflow-wrap: break-word;
     }
+
+    .secret {
+        color: #00FF95;
+    }
 </style>
 
 
-<div>
+<div class:secret={secret}>
     {name}:&nbsp{text}
 </div>
 

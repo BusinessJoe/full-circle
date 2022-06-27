@@ -17,3 +17,4 @@ futures = { version = "0.3", default-features = false }
 rand = "0.8.5"
 http = "0.2.8"
 image = "0.24.2"
+base64 = "0.13.0"

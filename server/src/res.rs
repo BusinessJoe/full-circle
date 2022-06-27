@@ -18,6 +18,10 @@ pub enum OutboundWsEvent<'a> {
         name: &'a str,
         text: &'a str,
     },
+    SecretChatMessage {
+        name: &'a str,
+        text: &'a str,
+    },
     ServerMessage(&'a str),
     Answer(&'a str),
 }
@@ -29,9 +33,6 @@ pub enum InboundWsEvent<'a> {
     // The text needs to be processed (to turn things strings `a\"b` into `a"b`) so a simple
     // reference does not work.
     ChatMessage(Cow<'a, str>),
-    NewImage {
-        dimensions: (u32, u32),
-        answer: &'a str,
-    },
+    // TODO: check if this is still used
     PlayerName(&'a str),
 }
