@@ -35,4 +35,6 @@ pub enum InboundWsEvent<'a> {
     ChatMessage(Cow<'a, str>),
     // TODO: check if this is still used
     PlayerName(&'a str),
+    Pass,
+    GiveUp,
 }

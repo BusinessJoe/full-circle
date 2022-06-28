@@ -86,6 +86,9 @@
 
                 answer_hint = payload.answer_hint;
                 round_over = false;
+                if (is_host) {
+                    runEpoch();
+                }
                 break;
             case "PrivateInfo":
                 console.log(payload);
@@ -142,7 +145,6 @@
                 });
                 console.log('sent image data');
 
-                runEpoch();
                 break;
             case "epoch/done":
                 if (payload) {
@@ -181,6 +183,14 @@
     onDestroy(() => {
         websocket.close();
     });
+
+    function handlePass() {
+        sendWsEvent(websocket, "Pass");
+    }
+
+    function handleGiveUp() {
+        sendWsEvent(websocket, "GiveUp");
+    }
 </script>
 
 
@@ -190,7 +200,14 @@
 
 <main>
     <div id="game-wrapper">
-        <PlayerDisplay players={players} />
+        <div class=panel>
+            <PlayerDisplay players={players} />
+            {#if is_host}
+                <button on:click={handlePass}>Pass</button>
+            {:else}
+                <button on:click={handleGiveUp}>Give Up</button>
+            {/if}
+        </div>
         <div id="main-panel">
             <span class=hint>
                 {answer_hint}
@@ -241,6 +258,11 @@
     #game-wrapper {
         display: flex;
         height: 90vh;
+    }
+
+    .panel {
+        display: flex;
+        flex-direction: column;
     }
 
     #main-panel {

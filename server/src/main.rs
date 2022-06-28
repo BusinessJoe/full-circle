@@ -140,15 +140,7 @@ impl Room {
             .iter_mut()
             .for_each(|mut p| p.info.has_answer = false);
 
-        // Update the host
-        let host_index = self
-            .players
-            .iter()
-            .position(|p| p.info.is_host)
-            .expect("no host in room");
-        self.players[host_index].info.is_host = false;
-        let host_index = (host_index + 1) % self.players.len();
-        self.players[host_index].info.is_host = true;
+        self.advance_host();
 
         // Broadcast player info and source image when we're done
         broadcast_source_image(self);
@@ -160,6 +152,28 @@ impl Room {
         }
 
         self.round = None;
+    }
+
+    fn advance_host(&mut self) {
+        // Update the host
+        let host_index = self
+            .players
+            .iter()
+            .position(|p| p.info.is_host)
+            .expect("no host in room");
+        self.players[host_index].info.is_host = false;
+        let host_index = (host_index + 1) % self.players.len();
+        self.players[host_index].info.is_host = true;
+    }
+
+    fn send_player_answer(&self, player: &Player) -> Result<(), String> {
+        let answer = &self.round.as_ref()
+            .ok_or("No round in progress".to_string())?
+            .answer;
+        let event = OutboundWsEvent::Answer(answer);
+        send_ws_event(event, player);
+
+        Ok(())
     }
 }
 
@@ -396,14 +410,14 @@ fn handle_chat_message(
     message: &str,
     private_id: &str,
     room: &mut Room,
-) -> Result<(), &'static str> {
+) -> Result<(), String> {
     if message.is_empty() {
-        return Err("Empty message");
+        return Err("Empty message".to_string());
     }
     if let Some(round) = &room.round {
         let player = room
             .get_player_from_private_id(private_id)
-            .ok_or("Player not found")?;
+            .ok_or("Player not found".to_string())?;
 
         if player.info.has_answer || player.info.is_host {
             room.players
@@ -417,16 +431,25 @@ fn handle_chat_message(
                     send_ws_event(chat_message, player);
                 });
         } else if round.is_correct_answer(message) {
-            let mut player = room
-                .get_player_mut_from_private_id(private_id)
-                .ok_or("Player not found")?;
+            let player = room
+                .get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?;
             if player.info.is_host {
-                return Err("Player is a host");
+                return Err("Player is a host".to_string());
             }
 
             // Player guessed correctly
-            player.info.has_answer = true;
-            send_player_correct_answer(player, message);
+            {
+                let mut player = room
+                    .get_player_mut_from_private_id(private_id)
+                    .ok_or("Player not found".to_string())?;
+                player.info.has_answer = true;
+            }
+
+            let player = room
+                .get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?;
+            room.send_player_answer(player)?;
             broadcast_server_message(&format!("{} got it right", player.info.name), room);
             broadcast_player_list(room);
 
@@ -502,11 +525,6 @@ fn send_current_circles(player: &Player, room: &Room) {
 
 fn send_private_info(player: &Player) {
     let event = OutboundWsEvent::PrivateInfo(player);
-    send_ws_event(event, player);
-}
-
-fn send_player_correct_answer(player: &Player, answer: &str) {
-    let event = OutboundWsEvent::Answer(answer);
     send_ws_event(event, player);
 }
 

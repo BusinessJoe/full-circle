@@ -116,6 +116,77 @@ pub async fn handle_binary_message(private_id: &str, msg: Vec<u8>, room: Arc<RwL
     eprintln!("Ignoring binary data");
 }
 
+async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, room: &mut Room) -> Result<(), String> {
+    match event {
+        InboundWsEvent::ChatMessage(message) => {
+            handle_chat_message(&message, private_id, room)?;
+        }
+        InboundWsEvent::GiveUp => {
+            if room.round.is_none() {
+                return Err("Cannot give up before round starts".to_string());
+            } else if room.get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?
+                .info.is_host
+            {
+                return Err("Only non-hosts can give up".to_string());
+            }
+
+            {
+                let mut player = room.get_player_mut_from_private_id(private_id)
+                    .ok_or("Player not found".to_string())?;
+                player.info.has_answer = true;
+            }
+            let player = room.get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?;
+            room.send_player_answer(player)?;
+            broadcast_server_message(&format!("{} gave up", player.info.name), room);
+            broadcast_player_list(room);
+
+            // Check if all non-host players have finished
+            let round_over = room
+                .players
+                .iter()
+                .filter(|p| !p.info.is_host)
+                .all(|p| p.info.has_answer);
+            if round_over {
+                room.end_round();
+            }
+        }
+        InboundWsEvent::Circle(circle) => {
+            let player = room.get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?;
+            if !player.info.is_host {
+                return Err("Only hosts can send circles".to_string());
+            }
+
+            if let Some(ref mut round) = room.round {
+                round.add_circle(circle.clone());
+                // Let everyone know there's a new circle
+                let event = OutboundWsEvent::Circle(circle);
+                broadcast_ws_event(event, &room);
+            }
+        }
+        InboundWsEvent::Pass => {
+            let player = room.get_player_from_private_id(private_id)
+                .ok_or("Player not found".to_string())?;
+            if !player.info.is_host {
+                return Err("Only hosts can pass".to_string());
+            } else if room.round.is_some() {
+                return Err("Cannot pass while round is in progress".to_string());
+            }
+
+            room.advance_host();
+            broadcast_player_list(room);
+        }
+        InboundWsEvent::PlayerName(_) => {
+            eprintln!("PlayerName is not implemented");
+            return Err("PlayerName is not implemented".to_string());
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<Room>>) {
     // Try parsing the message into a WsEvent
     let event: InboundWsEvent = match serde_json::from_str(msg) {
@@ -126,42 +197,8 @@ pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<R
         }
     };
 
-    // Handle WsEvents which can come from any user
     let mut room = room.write().await;
-
-    match event {
-        InboundWsEvent::ChatMessage(message) => {
-            if let Err(e) = handle_chat_message(&message, private_id, &mut room) {
-                eprintln!("Error: {}", e);
-            }
-        }
-        _ => {
-            let player = match room.get_player_mut_from_private_id(private_id) {
-                Some(p) => p,
-                None => return,
-            };
-
-            // Try handling event as host
-            if !player.info.is_host {
-                eprintln!("Rejecting message from player {}", private_id);
-                return;
-            }
-
-            match event {
-                InboundWsEvent::Circle(circle) => {
-                    if let Some(ref mut round) = room.round {
-                        round.add_circle(circle.clone());
-                        // Let everyone know there's a new circle
-                        let event = OutboundWsEvent::Circle(circle);
-                        broadcast_ws_event(event, &room);
-                    }
-                }
-                _ => {
-                    eprintln!("Unsupported message type");
-                }
-            }
-        }
-    }
+    handle_inbound_ws_event(private_id, event, &mut room).await;
 }
 
 #[cfg(test)]
