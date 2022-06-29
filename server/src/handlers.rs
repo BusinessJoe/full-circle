@@ -2,8 +2,8 @@ use crate::{
     broadcast_player_list, broadcast_server_message, broadcast_ws_event, handle_chat_message,
     InboundWsEvent, OutboundWsEvent, Room, Rooms, Round,
 };
-use log::{error, warn, info, trace};
 use http::StatusCode;
+use log::{debug, error, info, trace, warn};
 use serde::Serialize;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -48,39 +48,53 @@ pub async fn handle_user_disconnected(private_id: &str, rooms: Rooms, room: Arc<
     }
 }
 
+/// Creates a new round using the provided data.
+/// Called when the backend receives image data from the host.
 pub async fn handle_upload_round_data(
     rooms: Rooms,
     room_id: String,
     private_player_id: String,
-    round: Round,
+    new_round: Round,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     trace!("handling round data upload");
     let rooms = rooms.read().await;
 
-    let room = match rooms.get(&room_id) {
+    let room_arc = match rooms.get(&room_id) {
         Some(r) => r,
         None => return Ok(http::StatusCode::NOT_FOUND),
     };
-    let mut room = room.write().await;
+    let mut room = room_arc.write().await;
 
-    match room.get_player_from_private_id(&private_player_id) {
+    let result = match room.get_player_from_private_id(&private_player_id) {
         Some(player) if player.info.is_host => {
-            // Request is validated, now do some stuff
             if room.round.is_none() {
-                room.round = Some(round);
-
-                let round = room.round.as_ref().unwrap();
-                // Let people know about the new round's image dimensions and answer hint
+                // Request is validated, now do some stuff
                 let event = OutboundWsEvent::NewImage {
-                    dimensions: round.image_dimensions,
-                    answer_hint: &round.answer_hint(),
+                    dimensions: new_round.image_dimensions,
+                    answer_hint: &new_round.answer_hint(),
                 };
+
+                room.round = Some(new_round);
+
+                // Let people know about the new round's image dimensions and answer hint
                 broadcast_ws_event(event, &room);
+                Ok(http::StatusCode::OK)
+            } else {
+                Ok(http::StatusCode::BAD_REQUEST)
             }
-            Ok(http::StatusCode::OK)
         }
-        _ => return Ok(http::StatusCode::NOT_FOUND),
-    }
+        Some(_) => Ok(http::StatusCode::BAD_REQUEST),
+        _ => Ok(http::StatusCode::NOT_FOUND),
+    };
+
+    // Start countdown
+    room.countdown_abort_handle = Some(Room::start_round_countdown(
+        room_arc.clone(),
+        Duration::from_secs(10),
+    ));
+    debug!("Started a countdown");
+
+    result
 }
 
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
@@ -117,7 +131,11 @@ pub async fn handle_binary_message(private_id: &str, msg: Vec<u8>, room: Arc<RwL
     warn!("Ignoring binary data");
 }
 
-async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, room: &mut Room) -> Result<(), String> {
+async fn handle_inbound_ws_event(
+    private_id: &str,
+    event: InboundWsEvent<'_>,
+    room: &mut Room,
+) -> Result<(), String> {
     match event {
         InboundWsEvent::ChatMessage(message) => {
             handle_chat_message(&message, private_id, room)?;
@@ -125,19 +143,23 @@ async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, ro
         InboundWsEvent::GiveUp => {
             if room.round.is_none() {
                 return Err("Cannot give up before round starts".to_string());
-            } else if room.get_player_from_private_id(private_id)
+            } else if room
+                .get_player_from_private_id(private_id)
                 .ok_or("Player not found".to_string())?
-                .info.is_host
+                .info
+                .is_host
             {
                 return Err("Only non-hosts can give up".to_string());
             }
 
             {
-                let mut player = room.get_player_mut_from_private_id(private_id)
+                let mut player = room
+                    .get_player_mut_from_private_id(private_id)
                     .ok_or("Player not found".to_string())?;
                 player.info.has_answer = true;
             }
-            let player = room.get_player_from_private_id(private_id)
+            let player = room
+                .get_player_from_private_id(private_id)
                 .ok_or("Player not found".to_string())?;
             room.send_player_answer(player)?;
             broadcast_server_message(&format!("{} gave up", player.info.name), room);
@@ -154,13 +176,14 @@ async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, ro
             }
         }
         InboundWsEvent::Circle(circle) => {
-            let player = room.get_player_from_private_id(private_id)
+            let player = room
+                .get_player_from_private_id(private_id)
                 .ok_or("Player not found".to_string())?;
             if !player.info.is_host {
                 return Err("Only hosts can send circles".to_string());
             }
 
-            if let Some(ref mut round) = room.round {
+            if let Some(ref mut round) = &mut room.round {
                 round.add_circle(circle.clone());
                 // Let everyone know there's a new circle
                 let event = OutboundWsEvent::Circle(circle);
@@ -168,7 +191,8 @@ async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, ro
             }
         }
         InboundWsEvent::Pass => {
-            let player = room.get_player_from_private_id(private_id)
+            let player = room
+                .get_player_from_private_id(private_id)
                 .ok_or("Player not found".to_string())?;
             if !player.info.is_host {
                 return Err("Only hosts can pass".to_string());

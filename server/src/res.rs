@@ -24,6 +24,7 @@ pub enum OutboundWsEvent<'a> {
     },
     ServerMessage(&'a str),
     Answer(&'a str),
+    Countdown(u64),
 }
 
 #[derive(Debug, Deserialize)]

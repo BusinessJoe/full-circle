@@ -28,6 +28,7 @@
 
     let answer_hint = "";
     let round_over = true;
+    let countdown = null;
 
     $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
     $: display_controls = is_host && worker_ready;
@@ -113,6 +114,10 @@
                 break;
             case "ServerMessage":
                 messages = [...messages, payload];
+                break;
+            case "Countdown":
+                console.log(payload);
+                countdown = payload;
                 break;
             default:
                 console.error(`Type ${type} not recognized`);
@@ -205,13 +210,16 @@
             {#if is_host}
                 <button on:click={handlePass}>Pass</button>
             {:else}
-                <button on:click={handleGiveUp}>/ff</button>
+                <button on:click={handleGiveUp}>Give Up</button>
             {/if}
         </div>
         <div id="main-panel">
             <span class=hint>
                 {answer_hint}
             </span>
+            {#if countdown !== null}
+                {countdown}
+            {/if}
             {#if display_controls}
                 <ImagePicker onSubmit={onSubmit} />
             {/if}

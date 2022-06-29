@@ -2,9 +2,9 @@ mod handlers;
 mod res;
 mod utils;
 
+use log::{debug, info, trace, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
-use log::{info, trace, warn};
 
 use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
@@ -91,6 +91,7 @@ pub struct Room {
     players: Players,
     round: Option<Round>,
     cleanup_abort_handle: Option<AbortHandle>,
+    countdown_abort_handle: Option<AbortHandle>,
 }
 impl Room {
     pub fn new(id: String) -> Self {
@@ -101,6 +102,7 @@ impl Room {
             round: None,
 
             cleanup_abort_handle: None,
+            countdown_abort_handle: None,
         }
     }
 
@@ -127,6 +129,34 @@ impl Room {
             abort_handle.abort();
             self.cleanup_abort_handle = None;
         }
+    }
+
+    pub fn start_round_countdown(arc: Arc<RwLock<Self>>, duration: Duration) -> AbortHandle {
+        // Start an abortable countdown for this room's round
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+
+        let mut secs = duration.as_secs();
+        let future = Abortable::new(
+            async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(1));
+                debug!("Beginning countdown");
+                while secs > 0 {
+                    debug!("{} seconds remaining", secs);
+                    let room = arc.read().await;
+                    broadcast_ws_event(OutboundWsEvent::Countdown(secs), &room);
+                    interval.tick().await;
+                    secs -= 1;
+                }
+                debug!("End of countdown");
+
+                let mut room = arc.write().await;
+                room.end_round();
+            },
+            abort_registration,
+        );
+        tokio::task::spawn(future);
+
+        abort_handle
     }
 
     pub fn insert_player(&mut self, player: Player) {
@@ -174,7 +204,9 @@ impl Room {
     }
 
     fn send_player_answer(&self, player: &Player) -> Result<(), String> {
-        let answer = &self.round.as_ref()
+        let answer = &self
+            .round
+            .as_ref()
             .ok_or("No round in progress".to_string())?
             .answer;
         let event = OutboundWsEvent::Answer(answer);
@@ -413,11 +445,7 @@ async fn connect_player(
     handlers::handle_user_disconnected(&private_id, rooms, room).await;
 }
 
-fn handle_chat_message(
-    message: &str,
-    private_id: &str,
-    room: &mut Room,
-) -> Result<(), String> {
+fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Result<(), String> {
     if message.is_empty() {
         return Err("Empty message".to_string());
     }
