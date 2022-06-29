@@ -205,7 +205,7 @@
             {#if is_host}
                 <button on:click={handlePass}>Pass</button>
             {:else}
-                <button on:click={handleGiveUp}>Give Up</button>
+                <button on:click={handleGiveUp}>/ff</button>
             {/if}
         </div>
         <div id="main-panel">

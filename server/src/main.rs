@@ -4,6 +4,7 @@ mod utils;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use log::{info, trace, warn};
 
 use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
@@ -48,6 +49,12 @@ impl Player {
             private_id,
             info,
             sender,
+        }
+    }
+
+    pub fn send(&self, message: Message) {
+        if let Err(e) = self.sender.send(message) {
+            trace!("error when sending to player: {}", e);
         }
     }
 }
@@ -98,7 +105,7 @@ impl Room {
     }
 
     pub fn wait_then_cleanup(&mut self, rooms: Rooms, duration: Duration) {
-        println!("Deleting room {} in {:?}", &self.id, &duration);
+        trace!("Delelting room {} in {:?}", &self.id, &duration);
         // Start an abortable cleanup task for this room.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         self.cleanup_abort_handle = Some(abort_handle);
@@ -116,7 +123,7 @@ impl Room {
 
     pub fn cancel_cleanup(&mut self) {
         if let Some(abort_handle) = &self.cleanup_abort_handle {
-            println!("Cancelling cleanup for room {}", &self.id);
+            trace!("Cancelling cleanup for room {}", &self.id);
             abort_handle.abort();
             self.cleanup_abort_handle = None;
         }
@@ -148,7 +155,7 @@ impl Room {
         if let Some(round) = &self.round {
             broadcast_server_message(&format!(r#"The answer was "{}""#, round.answer), self);
         } else {
-            eprintln!("Error: room had no round");
+            warn!("Room had no round");
         }
 
         self.round = None;
@@ -271,7 +278,7 @@ async fn new_room(rooms: Rooms) -> Result<Response<String>, warp::Rejection> {
         .write()
         .await
         .insert(room_id.clone(), Arc::new(RwLock::new(new_room)));
-    eprintln!("New room: {}", &room_id);
+    info!("Created new room with id {}", &room_id);
 
     Ok(Response::builder()
         .body(
@@ -379,7 +386,7 @@ async fn connect_player(
             .last()
             .expect("There should always be a player after the push");
 
-        println!("Player {} joined room {}", player.private_id, &room.id);
+        info!("Player {} joined room {}", player.private_id, &room.id);
 
         // Tell the player what their id is
         send_private_info(player);
@@ -394,7 +401,7 @@ async fn connect_player(
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("websocket error(uid={}): {}", private_id, e);
+                warn!("websocket error(uid={}): {}", private_id, e);
                 break;
             }
         };
@@ -502,13 +509,13 @@ async fn delete_room(rooms: &Rooms, room_id: &str) {
         let mut rooms = rooms.write().await;
         rooms.remove(room_id);
     }
-    eprintln!("Deleted room {}", &room_id);
+    info!("Deleted room {}", &room_id);
 }
 
 // Send a WsEvent to a single player
 fn send_ws_event(event: OutboundWsEvent, player: &Player) {
     let message = serde_json::to_string(&event).expect("failed to serialize event");
-    player.sender.send(Message::text(&message));
+    player.send(Message::text(&message));
 }
 
 fn send_current_circles(player: &Player, room: &Room) {
@@ -532,11 +539,7 @@ fn send_private_info(player: &Player) {
 fn broadcast_ws_event(event: OutboundWsEvent, room: &Room) {
     let message = serde_json::to_string(&event).unwrap();
     for p in room.players.iter() {
-        if let Err(_disconnected) = p.sender.send(Message::text(&message)) {
-            // The tx is disconnected, our `user_disconnected` code
-            // should be happening in another task, nothing more to
-            // do here.
-        }
+        p.send(Message::text(&message));
     }
 }
 
@@ -552,12 +555,11 @@ fn broadcast_server_message(message: &str, room: &Room) {
 }
 
 fn broadcast_source_image(room: &Room) {
-    eprintln!("sending binary");
+    trace!("sending source image");
     if let Some(round) = &room.round {
-        eprintln!("data length is {}", round.image_data.len());
+        trace!("source image data is {} bytes", round.image_data.len());
         for p in room.players.iter() {
-            let res = p.sender.send(Message::binary(round.image_data.clone()));
-            eprintln!("{:?}", res);
+            p.send(Message::binary(round.image_data.clone()));
         }
     }
 }

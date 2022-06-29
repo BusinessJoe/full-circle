@@ -2,6 +2,7 @@ use crate::{
     broadcast_player_list, broadcast_server_message, broadcast_ws_event, handle_chat_message,
     InboundWsEvent, OutboundWsEvent, Room, Rooms, Round,
 };
+use log::{error, warn, info, trace};
 use http::StatusCode;
 use serde::Serialize;
 use std::convert::Infallible;
@@ -18,7 +19,7 @@ struct ErrorMessage {
 }
 
 pub async fn handle_user_disconnected(private_id: &str, rooms: Rooms, room: Arc<RwLock<Room>>) {
-    eprintln!("good bye player: {}", private_id);
+    info!("player {} disconnected", private_id);
 
     let mut room = room.write().await;
 
@@ -53,7 +54,7 @@ pub async fn handle_upload_round_data(
     private_player_id: String,
     round: Round,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    eprintln!("handling round data upload");
+    trace!("handling round data upload");
     let rooms = rooms.read().await;
 
     let room = match rooms.get(&room_id) {
@@ -98,7 +99,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = "METHOD_NOT_ALLOWED";
     } else {
-        eprintln!("unhandled rejection: {:?}", err);
+        error!("unhandled rejection: {:?}", err);
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "UNHANDLED_REJECTION";
     }
@@ -113,7 +114,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
 
 #[allow(unused_variables)]
 pub async fn handle_binary_message(private_id: &str, msg: Vec<u8>, room: Arc<RwLock<Room>>) {
-    eprintln!("Ignoring binary data");
+    warn!("Ignoring binary data");
 }
 
 async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, room: &mut Room) -> Result<(), String> {
@@ -179,7 +180,7 @@ async fn handle_inbound_ws_event(private_id: &str, event: InboundWsEvent<'_>, ro
             broadcast_player_list(room);
         }
         InboundWsEvent::PlayerName(_) => {
-            eprintln!("PlayerName is not implemented");
+            error!("PlayerName is not implemented");
             return Err("PlayerName is not implemented".to_string());
         }
     }
@@ -192,13 +193,15 @@ pub async fn handle_text_message(private_id: &str, msg: &str, room: Arc<RwLock<R
     let event: InboundWsEvent = match serde_json::from_str(msg) {
         Ok(event) => event,
         Err(e) => {
-            eprintln!("Failed to deserialize message {:?}", e);
+            warn!("Failed to deserialize message {:?}", e);
             return;
         }
     };
 
     let mut room = room.write().await;
-    handle_inbound_ws_event(private_id, event, &mut room).await;
+    if let Err(e) = handle_inbound_ws_event(private_id, event, &mut room).await {
+        warn!("{}", e);
+    }
 }
 
 #[cfg(test)]

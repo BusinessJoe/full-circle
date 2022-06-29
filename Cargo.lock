@@ -64,6 +64,7 @@ dependencies = [
  "futures-util",
  "http",
  "image",
+ "log",
  "pretty_env_logger",
  "rand 0.8.5",
  "serde 1.0.137",
