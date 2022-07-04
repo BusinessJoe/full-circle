@@ -6,6 +6,10 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "perf-test"
+path = "src/perf/perf.rs"
+
 [dependencies]
 shape-evolution = { path = "../shape-evolution" }
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
@@ -13,6 +17,7 @@ wasm-bindgen-futures = "0.4.30"
 js-sys = "0.3.57"
 image = "0.24.2"
 serde = {version = "1.0", features = ["derive"] }
+anyhow = "1.0"
 
 [dependencies.web-sys]
 version = "0.3.4"
@@ -33,3 +38,16 @@ features = [
   'HtmlElement',
   'MessageEvent',
 ]
+
+[dev-dependencies]
+pprof = { version = "0.3", features = ["flamegraph"] }
+criterion = "0.3"
+
+[[bench]]
+name = "wasm_bench"
+harness = false
+
+[profile.bench]
+debug = true
+[profile.release]
+debug = 1

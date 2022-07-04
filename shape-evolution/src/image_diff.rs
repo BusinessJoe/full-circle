@@ -1,5 +1,3 @@
-// TODO: image_diff can use bounds to avoid iterating over large parts of the image.
-// score_small might be able to use a subimage for the target image to avoid a copy
 #[must_use]
 pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> i64 {
     assert!(

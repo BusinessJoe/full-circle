@@ -320,18 +320,30 @@ impl RandomCircle {
         let mut diff = 0i64;
 
         let (width, height) = target_img.dimensions();
-        let in_bounds = |x, y| x >= 0 && x < width as i32 && y >= 0 && y < height as i32;
 
-        //let line_iterator = BresenhamLineIter::new((x0 as f32, y as f32), (x1 as f32, y as f32));
+        if 0 <= y && y < height.try_into().unwrap() {
+            // Clamp the lower and upper bounds to fit in the image
+            let x0: u32 = cmp::max(x0, 0).try_into().unwrap();
+            let x1: u32 = cmp::min(x1, (width-1).try_into().unwrap()).try_into().unwrap();
 
-        for x in x0..=x1 {
-            if in_bounds(x, y) {
-                let target_pixel = target_img.get_pixel(x as u32, y as u32);
-                let current_pixel = current_img.get_pixel(x as u32, y as u32);
-                diff += Self::pixel_diff(target_pixel.channels(), color.channels())
-                    - Self::pixel_diff(target_pixel.channels(), current_pixel.channels());
+            // Convert y to a u32
+            let y: u32 = y.try_into().unwrap();
+
+            // Loop over every pixel along the line and calculate the potential difference in score
+            // of applying the color to that pixel
+            for x in x0..=x1 {
+                // x and y have already been bounds-checked, so we can index directly into
+                // the underlying pixel buffer without worry.
+                let index: usize = (4 * x + width * y).try_into().unwrap();
+                let target_pixel = &target_img.as_raw()[index..index+4];
+                let current_pixel = &current_img.as_raw()[index..index+4];
+
+                diff += Self::pixel_diff(target_pixel, color.channels())
+                    - Self::pixel_diff(target_pixel, current_pixel);
             }
         }
+
+        //let line_iterator = BresenhamLineIter::new((x0 as f32, y as f32), (x1 as f32, y as f32));
 
         diff
     }
