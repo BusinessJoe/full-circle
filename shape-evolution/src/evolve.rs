@@ -115,7 +115,7 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
                 imgbuf = best_shape.draw(&imgbuf, 1.0);
             }
             None => {
-                println!("Discarded epoch");
+                //println!("Discarded epoch");
             }
         }
 

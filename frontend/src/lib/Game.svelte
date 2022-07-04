@@ -30,6 +30,10 @@
     let round_over = true;
     let countdown = null;
 
+    let epoch_count = 0;
+    let circle_count = 0;
+    let num_generations = 100;
+
     $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
     $: display_controls = is_host && worker_ready;
 
@@ -57,7 +61,6 @@
 
     // Websocket event handler
     function onEvent(type, payload) {
-        console.log("Event:", type);
         switch (type) {
             case "binary":
                 const canvas = document.getElementById("source-image");
@@ -66,7 +69,6 @@
                 createImageBitmap(payload).then(image => {
                     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
                 });
-                console.log('binary', payload);
 
                 console.log("round is over");
                 round_over = true;
@@ -92,7 +94,6 @@
                 }
                 break;
             case "PrivateInfo":
-                console.log(payload);
                 public_id = payload.info.public_id;
                 private_id = payload.private_id;
                 break;
@@ -116,7 +117,6 @@
                 messages = [...messages, payload];
                 break;
             case "Countdown":
-                console.log(payload);
                 countdown = payload;
                 break;
             default:
@@ -152,7 +152,9 @@
 
                 break;
             case "epoch/done":
+                epoch_count++;
                 if (payload) {
+                    circle_count++;
                     const { circle, image_data } = payload;
                     // Turn typed arrays (Int32Array, etc.) into normal JS arrays.
                     circle.center = Array.from(circle.center);
@@ -160,10 +162,9 @@
 
                     const message = JSON.stringify({"Circle": circle});
                     sendWsEvent(websocket, "Circle", circle);
-                } else {
-                    console.log("No circle found");
-                }
-                worker.postMessage({ type: "epoch", payload: { num_gens: 25, gen_size: 100 } });
+                } 
+
+                runEpoch();
                 break;
             default:
                 console.error(`action type '${type}' not recognized`);
@@ -178,7 +179,7 @@
     }
 
     function runEpoch() {
-        worker.postMessage({ type: "epoch", payload: { num_gens: 25, gen_size: 100 } });
+        worker.postMessage({ type: "epoch", payload: { num_gens: num_generations, gen_size: 100 } });
     }
 
     onMount(() => {
@@ -218,7 +219,7 @@
                 {answer_hint}
             </span>
             {#if countdown !== null}
-                {countdown}
+                {countdown} {circle_count}/{epoch_count}
             {/if}
             {#if display_controls}
                 <ImagePicker onSubmit={onSubmit} />

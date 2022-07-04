@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use image::RgbaImage;
-use std::iter;
-use std::time::Duration;
 use shape_evolution::random_shape::RandomCircle;
 use shape_evolution::{evolve, evolve::sort_generation};
+use std::iter;
+use std::time::Duration;
 
 // Generate a population of 100 random circles with given radius
 fn randomize_generation(radius: i32, imgx: u32, imgy: u32) -> Vec<RandomCircle> {

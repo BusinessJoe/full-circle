@@ -18,12 +18,9 @@ async function init_wasm_in_worker() {
     const module = await wasm();
     const { TestStruct } = module;
 
-    console.log("among");
-
     // Set callback to handle messages passed to the worker.
     self.onmessage = async event => {
         const { type, payload } = event.data;
-        console.log("processing event", type);
 
         switch (type) {
             case "init/url":
@@ -53,7 +50,6 @@ async function init_wasm_in_worker() {
                 break;
             case "epoch":
                 const { gen_size, num_gens } = payload;
-                console.log(gen_size, num_gens);
                 let best_circle = test_struct.try_epoch(gen_size, num_gens);
 
                 if (best_circle) {

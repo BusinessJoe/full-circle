@@ -1,0 +1,25 @@
+#!/bin/sh
+# counts instructions for a standard workload
+set -e
+
+OUTFILE="cachegrind.perf-test.`git describe --always --dirty`-`date +%s`"
+
+rm target/release/perf-test || true
+rm perf-test.db* || true
+
+cargo build \
+  --bin=perf-test \
+  --release
+
+valgrind \
+  --tool=cachegrind \
+  --cachegrind-out-file="$OUTFILE" \
+  ./target/release/perf-test 300 5 rap.jpeg
+
+LAST=`ls -t cachegrind.perf-test.* | sed -n 2p`
+
+echo "--------------------------------------------------------------------------------"
+echo "change since last run:"
+echo "         Ir   I1mr  ILmr          Dr    D1mr    DLmr          Dw    D1mw    DLmw"
+echo "--------------------------------------------------------------------------------"
+cg_diff $LAST $OUTFILE | tail -1

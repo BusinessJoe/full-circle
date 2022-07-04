@@ -317,26 +317,33 @@ impl RandomCircle {
         y: i32,
         color: Rgba<u8>,
     ) -> i64 {
-        let mut diff = 0i64;
+        let mut diff: i64 = 0;
 
-        let (width, height) = target_img.dimensions();
+        let (width, height): (u32, u32) = target_img.dimensions();
 
-        if 0 <= y && y < height.try_into().unwrap() {
+        // Check some preconditions
+        if !(x0 < width.try_into().unwrap() && x1 >= 0 && x0 <= x1) {
+            return 0;
+        }
+
+        if 0 <= y && u32::try_from(y).unwrap() < height {
             // Clamp the lower and upper bounds to fit in the image
             let x0: u32 = cmp::max(x0, 0).try_into().unwrap();
-            let x1: u32 = cmp::min(x1, (width-1).try_into().unwrap()).try_into().unwrap();
+            // here x1 becomes a exclusive upper bound
+            let temp = cmp::min(x1 + 1, width.try_into().unwrap());
+            let x1: u32 = temp.try_into().unwrap();
 
             // Convert y to a u32
             let y: u32 = y.try_into().unwrap();
 
             // Loop over every pixel along the line and calculate the potential difference in score
             // of applying the color to that pixel
-            for x in x0..=x1 {
+            for x in x0..x1 {
                 // x and y have already been bounds-checked, so we can index directly into
                 // the underlying pixel buffer without worry.
-                let index: usize = (4 * x + width * y).try_into().unwrap();
-                let target_pixel = &target_img.as_raw()[index..index+4];
-                let current_pixel = &current_img.as_raw()[index..index+4];
+                let index: usize = 4 * usize::try_from(x + width * y).unwrap();
+                let target_pixel = &target_img.as_raw()[index..index + 4];
+                let current_pixel = &current_img.as_raw()[index..index + 4];
 
                 diff += Self::pixel_diff(target_pixel, color.channels())
                     - Self::pixel_diff(target_pixel, current_pixel);
