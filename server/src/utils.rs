@@ -25,7 +25,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    #[text]
+    use super::*;
+    #[test]
     fn test_hint() {
         assert_eq!(make_hint("hello world"), String::from("_____ _____"));
     }

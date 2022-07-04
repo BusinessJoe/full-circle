@@ -141,9 +141,11 @@ impl Room {
                 let mut interval = tokio::time::interval(Duration::from_secs(1));
                 debug!("Beginning countdown");
                 while secs > 0 {
-                    debug!("{} seconds remaining", secs);
-                    let room = arc.read().await;
-                    broadcast_ws_event(OutboundWsEvent::Countdown(secs), &room);
+                    trace!("{} seconds remaining", secs);
+                    {
+                        let room = arc.read().await;
+                        broadcast_ws_event(OutboundWsEvent::Countdown(secs), &room);
+                    }
                     interval.tick().await;
                     secs -= 1;
                 }
@@ -188,7 +190,20 @@ impl Room {
             warn!("Room had no round");
         }
 
+        self.discard_abort_handles();
         self.round = None;
+    }
+
+    fn discard_abort_handles(&mut self) {
+        if let Some(handle) = &self.cleanup_abort_handle {
+            handle.abort();
+            self.cleanup_abort_handle = None;
+        }
+
+        if let Some(handle) = &self.countdown_abort_handle {
+            handle.abort();
+            self.countdown_abort_handle = None;
+        }
     }
 
     fn advance_host(&mut self) {
@@ -596,11 +611,21 @@ fn broadcast_source_image(room: &Room) {
 mod tests {
     use crate::{join_filter, new_room, room_filter, OutboundWsEvent, Rooms};
     use image::Rgba;
+    use pretty_env_logger;
     use shape_evolution::random_shape::RandomCircle;
+    use std::collections::HashMap;
     use warp::Filter;
+
+    /// Setup function that is only run once, even if called multiple times.
+    fn setup() {
+        let _ = pretty_env_logger::formatted_builder()
+            .is_test(true)
+            .try_init();
+    }
 
     #[tokio::test]
     async fn test_new_room() {
+        setup();
         let rooms = Rooms::default();
 
         let room = room_filter(rooms.clone());
@@ -616,6 +641,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn test_room_cleanup() {
+        setup();
         let rooms = Rooms::default();
 
         let room = room_filter(rooms.clone());
@@ -633,6 +659,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_player_join() {
+        setup();
         let rooms = Rooms::default();
 
         let room = room_filter(rooms.clone());
@@ -641,7 +668,10 @@ mod tests {
         assert_eq!(rooms.read().await.len(), 0);
 
         let res = warp::test::request().path("/room").reply(&room).await;
-        let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
+        let body = std::str::from_utf8(res.body()).expect("body was not utf8");
+        let json: HashMap<String, String> =
+            serde_json::from_str(body).expect("could not parse body as json");
+        let join_path = json.get("path").expect("no path provided");
 
         let mut ws = warp::test::ws()
             .path(join_path)
@@ -665,6 +695,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_circles_clear() {
+        setup();
         let rooms = Rooms::default();
 
         let room = room_filter(rooms.clone());
@@ -673,7 +704,10 @@ mod tests {
         assert_eq!(rooms.read().await.len(), 0);
 
         let res = warp::test::request().path("/room").reply(&room).await;
-        let join_path = std::str::from_utf8(res.body()).expect("body was not utf8");
+        let body = std::str::from_utf8(res.body()).expect("body was not utf8");
+        let json: HashMap<String, String> =
+            serde_json::from_str(body).expect("could not parse body as json");
+        let join_path = json.get("path").expect("no path provided");
 
         let mut ws = warp::test::ws()
             .path(join_path)
@@ -687,6 +721,13 @@ mod tests {
         ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}")
             .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        {
+            let rooms = rooms.read().await;
+            let room = rooms.values().next().unwrap();
+            let room = room.read().await;
+            assert!(room.round.is_some());
+        }
 
         let circle = RandomCircle {
             imgx: 100,
@@ -703,7 +744,7 @@ mod tests {
             let rooms = rooms.read().await;
             let room = rooms.values().next().unwrap();
             let room = room.read().await;
-            assert_eq!(room.circles.len(), 1);
+            assert_eq!(room.round.as_ref().unwrap().circles.len(), 1);
         }
 
         ws.send_text("{\"NewImage\": {\"dimensions\": [100, 200], \"answer\": \"foo\"}}")
@@ -714,7 +755,7 @@ mod tests {
             let rooms = rooms.read().await;
             let room = rooms.values().next().unwrap();
             let room = room.read().await;
-            assert_eq!(room.circles.len(), 0);
+            assert_eq!(room.round.as_ref().unwrap().circles.len(), 0);
         }
     }
 }

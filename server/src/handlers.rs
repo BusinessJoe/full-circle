@@ -90,7 +90,7 @@ pub async fn handle_upload_round_data(
     // Start countdown
     room.countdown_abort_handle = Some(Room::start_round_countdown(
         room_arc.clone(),
-        Duration::from_secs(10),
+        Duration::from_secs(1000),
     ));
     debug!("Started a countdown");
 

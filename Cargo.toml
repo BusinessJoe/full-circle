@@ -4,3 +4,9 @@ members = [
     "server",
     "wasm",
 ]
+
+
+#[profile.bench]
+#debug = true
+#[profile.release]
+#debug = 1
