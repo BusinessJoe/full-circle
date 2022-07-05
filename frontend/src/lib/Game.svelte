@@ -42,7 +42,6 @@ let circle_count = 0;
 let num_generations = 100;
 
 $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
-$: display_controls = is_host && worker_ready;
 
 
 function onWebWorkerEvent(worker, type, payload) {
@@ -155,12 +154,18 @@ function handleGiveUp() {
             {/if}
         </div>
         <div class=panel id="main-panel">
-            <span class=hint>
-                {answer_hint}
-            </span>
-            <Countdown websocket={websocket} enabled={true} />
-            {circle_count}/{epoch_count}
-            {#if display_controls}
+            {#if answer_hint}
+                <span class=hint>
+                    {answer_hint}
+                </span>
+            {/if}
+            {#if game_state === GameStates.InProgress}
+                <Countdown websocket={websocket} enabled={true} />
+            {/if}
+            {#if is_host && game_state === GameStates.InProgress}
+                {circle_count}/{epoch_count}
+            {/if}
+            {#if is_host && worker_ready && game_state === GameStates.RoundOver}
                 <ImagePicker onSubmit={onSubmit} />
             {/if}
             <div>
