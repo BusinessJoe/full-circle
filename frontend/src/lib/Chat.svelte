@@ -14,7 +14,6 @@
     }
 
     onMount(() => {
-        console.log("Adding handlers");
         websocket.addEventListener("ChatMessage", (payload) => {
             // We can't just use messages.push(), since the mutation will not trigger an update on its own.
             messages = [...messages, payload];

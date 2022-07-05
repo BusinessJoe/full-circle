@@ -1,3 +1,10 @@
+<script context="module">
+    export const GameStates = {
+        InProgress: "InProgress",
+        RoundOver: "RoundOver",
+    };
+</script>
+
 <script>
 import { onMount, onDestroy } from 'svelte';
 import { PlayerWebSocket } from '../lib/Websocket.svelte';
@@ -5,6 +12,8 @@ import WebWorker from '../lib/WebWorker.svelte';
 import PlayerDisplay from '../lib/PlayerDisplay.svelte';
 import ImagePicker from '../lib/ImagePicker.svelte';
 import Chat from '../lib/Chat.svelte';
+import Countdown from '../lib/Countdown.svelte';
+import Canvas from '../lib/Canvas.svelte';
 import { arrayBufferToBase64 } from '../lib/utils.js';
 
 export let room_id;
@@ -26,8 +35,7 @@ let answer = "";
 let buffer = null;
 
 let answer_hint = "";
-let round_over = true;
-let countdown = null;
+let game_state = GameStates.RoundOver;
 
 let epoch_count = 0;
 let circle_count = 0;
@@ -36,27 +44,6 @@ let num_generations = 100;
 $: is_host = Boolean(players.find(info => info.public_id === public_id)?.is_host);
 $: display_controls = is_host && worker_ready;
 
-function drawCircle(circle) {
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
-    const { imgx, imgy, center, radius, color } = circle;
-
-    const scale_x = canvas.width / imgx;
-    const scale_y = canvas.height / imgy;
-    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${color[3]/255}`;
-    ctx.beginPath();
-    ctx.ellipse(
-        center[0] * scale_x,
-        center[1] * scale_y,
-        radius * scale_x,
-        radius * scale_y,
-        0,
-        0,
-        2 * Math.PI
-    );
-    ctx.fill();
-}
 
 function onWebWorkerEvent(worker, type, payload) {
     switch (type) {
@@ -116,34 +103,13 @@ function runEpoch() {
 }
 
 onMount(() => {
-
     websocket.addEventListener("binary", (payload) => {
-        const canvas = document.getElementById("source-image");
-        const ctx = canvas.getContext("2d");
-
-        createImageBitmap(payload).then(image => {
-            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        });
-
         console.log("round is over");
-        round_over = true;
-    });
-    websocket.addEventListener("Circle", (payload) => {
-        drawCircle(payload);
-    });
-    websocket.addEventListener("CircleSequence", (payload) => {
-        for (let circle of payload) {
-            drawCircle(circle);
-        }
+        game_state = GameStates.RoundOver;
     });
     websocket.addEventListener("NewImage", (payload) => {
-        const [new_width, new_height] = payload.dimensions;
-        width = new_width;
-        height = new_height;
-        console.log("new canvas dimensions:", width, height);
-
         answer_hint = payload.answer_hint;
-        round_over = false;
+        game_state = GameStates.InProgress;
         if (is_host) {
             runEpoch();
         }
@@ -157,9 +123,6 @@ onMount(() => {
     });
     websocket.addEventListener("Host", (payload) => {
         is_host = payload;
-    });
-    websocket.addEventListener("Countdown", (payload) => {
-        countdown = payload;
     });
 });
 
@@ -191,37 +154,19 @@ function handleGiveUp() {
                 <button on:click={handleGiveUp}>Give Up</button>
             {/if}
         </div>
-        <div id="main-panel">
+        <div class=panel id="main-panel">
             <span class=hint>
                 {answer_hint}
             </span>
-            {#if countdown !== null}
-                {countdown} {circle_count}/{epoch_count}
-            {/if}
+            <Countdown websocket={websocket} enabled={true} />
+            {circle_count}/{epoch_count}
             {#if display_controls}
                 <ImagePicker onSubmit={onSubmit} />
             {/if}
             <div>
                 You are {public_id}, host: {is_host}
             </div>
-            <div id="canvas-wrapper" 
-                class="canvas-wrapper"
-                class:canvas-wrapper-landscape={width > height}
-                class:canvas-wrapper-portrait={!(width > height)}
-                >
-                <canvas id="canvas" width={width} height={height} 
-                    class="canvas"
-                    class:canvas-landscape={width > height}
-                    class:canvas-portrait={!(width > height)}
-                    />
-                    <canvas id="source-image" width={width} height={height} 
-                        class="canvas"
-                        class:fade={round_over}
-                        class:hide={!round_over}
-                        class:canvas-landscape={width > height}
-                        class:canvas-portrait={!(width > height)}
-                        />
-            </div>
+            <Canvas websocket={websocket} width={width} height={height} game_state={game_state}/>
         </div>
         <Chat websocket={websocket} />
     </div>
@@ -252,66 +197,10 @@ function handleGiveUp() {
     }
 
     #main-panel {
-        display: flex;
-        flex-direction: column;
         justify-content: center;
         padding: 10px;
         background-color: #2b2a33;
         border-radius: 5px;
-    }
-
-    #canvas-wrapper {
-        width: 70vh;
-        height: 70vh;
-        display: flex;
-        justify-content: center;
-    }
-
-    @keyframes fadeIn {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    .fade {
-        animation: fadeIn 2.0s;
-        transition: opacity 0.3s;
-    }
-
-    .fade:hover {
-        opacity: 0%;
-    }
-
-    .hide {
-        visibility: hidden;
-    }
-
-    .canvas {
-        border: 1px solid white;
-        background-color: #000;
-        position: absolute;
-    }
-
-    .canvas-wrapper {
-        position: relative;
-    }
-
-    .canvas-wrapper-landscape {
-        flex-direction: column;
-    }
-
-    .canvas-landscape {
-        width: 100%;
-        height: auto;
-    }
-
-    .canvas-wrapper-portrait {
-        flex-direction: row;
-    }
-
-    .canvas-portrait {
-        height: 100%;
-        width: auto;
-        margin-left: auto;
-        margin-right: auto;
     }
 
     .hint {
