@@ -1,8 +1,9 @@
 <script>
+    import { onMount, onDestroy } from 'svelte';
     import ChatMessage from '../lib/ChatMessage.svelte';
     import ServerMessage from '../lib/ServerMessage.svelte';
     export let websocket;
-    export let messages;
+    let messages = [];
     let chat_message = "";
 
     function handleKey(event) {
@@ -12,7 +13,21 @@
         }
     }
 
-    $: messages, console.log(messages);
+    onMount(() => {
+        console.log("Adding handlers");
+        websocket.addEventListener("ChatMessage", (payload) => {
+            // We can't just use messages.push(), since the mutation will not trigger an update on its own.
+            messages = [...messages, payload];
+        });
+        websocket.addEventListener("SecretChatMessage", (payload) => {
+            payload.secret = true;
+            messages = [...messages, payload];
+        });
+        websocket.addEventListener("ServerMessage", (payload) => {
+            console.log(payload);
+            messages = [...messages, payload];
+        });
+    });
 </script>
 
 

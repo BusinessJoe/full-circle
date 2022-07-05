@@ -1,7 +1,7 @@
 <script>
     export let name;
     export let text;
-    export let secret;
+    export let secret = false;
 </script>
 
 

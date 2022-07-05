@@ -15,9 +15,8 @@ export let name;
 let worker;
 let worker_ready = false;
 
-let websocket;
+let websocket = new PlayerWebSocket(websocket_url, name);
 let players = [];
-let messages = [];
 let public_id;
 let private_id;
 let width = 100;
@@ -117,7 +116,6 @@ function runEpoch() {
 }
 
 onMount(() => {
-    websocket = new PlayerWebSocket(websocket_url, name);
 
     websocket.addEventListener("binary", (payload) => {
         const canvas = document.getElementById("source-image");
@@ -159,18 +157,6 @@ onMount(() => {
     });
     websocket.addEventListener("Host", (payload) => {
         is_host = payload;
-    });
-    websocket.addEventListener("ChatMessage", (payload) => {
-        // We can't just use messages.push(), since the mutation will not trigger an update on its own.
-        messages = [...messages, payload];
-    });
-    websocket.addEventListener("SecretChatMessage", (payload) => {
-        payload.secret = true;
-        messages = [...messages, payload];
-    });
-    websocket.addEventListener("ServerMessage", (payload) => {
-        console.log(payload);
-        messages = [...messages, payload];
     });
     websocket.addEventListener("Countdown", (payload) => {
         countdown = payload;
@@ -237,7 +223,7 @@ function handleGiveUp() {
                         />
             </div>
         </div>
-        <Chat websocket={websocket} messages={messages} />
+        <Chat websocket={websocket} />
     </div>
 </main>
 
