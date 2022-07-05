@@ -1,5 +1,4 @@
 <script>
-    import { sendWsEvent } from '../lib/Websocket.svelte';
     import ChatMessage from '../lib/ChatMessage.svelte';
     import ServerMessage from '../lib/ServerMessage.svelte';
     export let websocket;
@@ -8,7 +7,7 @@
 
     function handleKey(event) {
         if (event.key === "Enter" && chat_message) {
-            sendWsEvent(websocket, "ChatMessage", chat_message);
+            websocket.send("ChatMessage", chat_message);
             chat_message = "";
         }
     }

@@ -1,37 +1,59 @@
 <script context="module">
-    // onEvent(type, payload)
-    export function initWebsocket(uri, name, onEvent) {
-        const canvas = document.getElementById('drawing');
-
-        console.log(uri);
-        const ws = new WebSocket(uri);
-
-        ws.onopen = () => {
-            console.log("Websocket opened");
-            sendWsEvent(ws, "PlayerName", name);
-        };
-        ws.onmessage = (message) => {
-            if (message.data instanceof Blob) {
-                onEvent("binary", message.data);
-            } else {
-                const data = JSON.parse(message.data);
-                const type = Object.keys(data)[0];
-                const payload = data[type];
-                onEvent(type, payload);
-            }
-        };
-
-        return ws;
+export class PlayerWebSocket extends EventTarget {
+    constructor(uri, name) {
+        super();
+        this.ws = null;
+        this.connectWebSocket(uri, name);
     }
 
+    connectWebSocket(uri, name) {
+        console.log("Establishing connection");
+        this.ws = new WebSocket(uri);
 
-    // Helper function for sending an event through a websocket
-    export function sendWsEvent(ws, type, payload) {
+        this.ws.onopen = () => {
+            console.log("Websocket opened successfully");
+            this.send("PlayerName", name);
+        };
+
+        this.ws.onmessage = (message) => {
+            let type, payload;
+            if (message.data instanceof Blob) {
+                type = "binary";
+                payload = message.data;
+            } else {
+                const data = JSON.parse(message.data);
+                type = Object.keys(data)[0];
+                payload = data[type];
+            }
+
+            let event = new CustomEvent(type, {
+                detail: {
+                    payload
+                }
+            });
+            this.dispatchEvent(event);
+        }
+    }
+    
+    close() {
+        this.ws.close();
+    }
+
+    send(type, payload) {
         if (payload === undefined) {
-            //
+            // this is how unit structs are represented
             payload = null;
         }
         const message = JSON.stringify({ [type]: payload });
-        ws.send(message);
+        this.ws.send(message);
     }
+
+    addEventListener(type, listener) {
+        console.log("Adding listener for", type);
+        const decorated_listener = (event) => {
+            listener(event.detail.payload);
+        }
+        super.addEventListener(type, decorated_listener);
+    }
+}
 </script>
