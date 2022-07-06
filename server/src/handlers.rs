@@ -2,6 +2,7 @@ use crate::{
     broadcast_player_list, broadcast_server_message, broadcast_ws_event, handle_chat_message,
     InboundWsEvent, OutboundWsEvent, Room, Rooms, Round,
 };
+use anyhow::{anyhow, bail, Result};
 use http::StatusCode;
 use log::{debug, error, info, trace, warn};
 use serde::Serialize;
@@ -104,10 +105,10 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "NOT_FOUND";
-    } else if let Some(_) = err.find::<warp::reject::UnsupportedMediaType>() {
+    } else if err.find::<warp::reject::UnsupportedMediaType>().is_some() {
         code = StatusCode::UNSUPPORTED_MEDIA_TYPE;
         message = "UNSUPPORTED_MEDIA_TYPE";
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         // We can handle a specific error, here METHOD_NOT_ALLOWED,
         // and render it however we want
         code = StatusCode::METHOD_NOT_ALLOWED;
@@ -135,32 +136,32 @@ async fn handle_inbound_ws_event(
     private_id: &str,
     event: InboundWsEvent<'_>,
     room: &mut Room,
-) -> Result<(), String> {
+) -> Result<()> {
     match event {
         InboundWsEvent::ChatMessage(message) => {
             handle_chat_message(&message, private_id, room)?;
         }
         InboundWsEvent::GiveUp => {
             if room.round.is_none() {
-                return Err("Cannot give up before round starts".to_string());
+                bail!("Cannot give up before round starts");
             } else if room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?
+                .ok_or_else(|| anyhow!("Player not found"))?
                 .info
                 .is_host
             {
-                return Err("Only non-hosts can give up".to_string());
+                bail!("Only non-hosts can give up");
             }
 
             {
                 let mut player = room
                     .get_player_mut_from_private_id(private_id)
-                    .ok_or("Player not found".to_string())?;
+                    .ok_or_else(|| anyhow!("Player not found"))?;
                 player.info.has_answer = true;
             }
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             room.send_player_answer(player)?;
             broadcast_server_message(&format!("{} gave up", player.info.name), room);
             broadcast_player_list(room);
@@ -178,26 +179,26 @@ async fn handle_inbound_ws_event(
         InboundWsEvent::Circle(circle) => {
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             if !player.info.is_host {
-                return Err("Only hosts can send circles".to_string());
+                bail!("Only hosts can send circles");
             }
 
             if let Some(ref mut round) = &mut room.round {
                 round.add_circle(circle.clone());
                 // Let everyone know there's a new circle
                 let event = OutboundWsEvent::Circle(circle);
-                broadcast_ws_event(event, &room);
+                broadcast_ws_event(event, room);
             }
         }
         InboundWsEvent::Pass => {
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             if !player.info.is_host {
-                return Err("Only hosts can pass".to_string());
+                bail!("Only hosts can pass");
             } else if room.round.is_some() {
-                return Err("Cannot pass while round is in progress".to_string());
+                bail!("Cannot pass while round is in progress");
             }
 
             room.advance_host();
@@ -205,7 +206,7 @@ async fn handle_inbound_ws_event(
         }
         InboundWsEvent::PlayerName(_) => {
             error!("PlayerName is not implemented");
-            return Err("PlayerName is not implemented".to_string());
+            bail!("PlayerName is not implemented");
         }
     }
 

@@ -6,6 +6,7 @@ use log::{debug, info, trace, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use anyhow::{anyhow, bail, Result};
 use futures::future::{AbortHandle, Abortable};
 use futures_util::{stream::SplitStream, StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
@@ -218,11 +219,11 @@ impl Room {
         self.players[host_index].info.is_host = true;
     }
 
-    fn send_player_answer(&self, player: &Player) -> Result<(), String> {
+    fn send_player_answer(&self, player: &Player) -> Result<()> {
         let answer = &self
             .round
             .as_ref()
-            .ok_or("No round in progress".to_string())?
+            .ok_or_else(|| anyhow!("No round in progress"))?
             .answer;
         let event = OutboundWsEvent::Answer(answer);
         send_ws_event(event, player);
@@ -460,14 +461,14 @@ async fn connect_player(
     handlers::handle_user_disconnected(&private_id, rooms, room).await;
 }
 
-fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Result<(), String> {
+fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Result<()> {
     if message.is_empty() {
-        return Err("Empty message".to_string());
+        bail!("Empty message");
     }
     if let Some(round) = &room.round {
         let player = room
             .get_player_from_private_id(private_id)
-            .ok_or("Player not found".to_string())?;
+            .ok_or_else(|| anyhow!("Player not found"))?;
 
         if player.info.has_answer || player.info.is_host {
             room.players
@@ -483,22 +484,22 @@ fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Resu
         } else if round.is_correct_answer(message) {
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             if player.info.is_host {
-                return Err("Player is a host".to_string());
+                bail!("Player is a host");
             }
 
             // Player guessed correctly
             {
                 let mut player = room
                     .get_player_mut_from_private_id(private_id)
-                    .ok_or("Player not found".to_string())?;
+                    .ok_or_else(|| anyhow!("Player not found"))?;
                 player.info.has_answer = true;
             }
 
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found".to_string())?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             room.send_player_answer(player)?;
             broadcast_server_message(&format!("{} got it right", player.info.name), room);
             broadcast_player_list(room);
@@ -515,7 +516,7 @@ fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Resu
         } else {
             let player = room
                 .get_player_from_private_id(private_id)
-                .ok_or("Player not found")?;
+                .ok_or_else(|| anyhow!("Player not found"))?;
             let event = OutboundWsEvent::ChatMessage {
                 name: &player.info.name,
                 text: message,
@@ -526,7 +527,7 @@ fn handle_chat_message(message: &str, private_id: &str, room: &mut Room) -> Resu
         // There is no current round, so no special considerations are needed
         let player = room
             .get_player_from_private_id(private_id)
-            .ok_or("Player not found")?;
+            .ok_or_else(|| anyhow!("Player not found"))?;
         let event = OutboundWsEvent::ChatMessage {
             name: &player.info.name,
             text: message,
@@ -609,12 +610,11 @@ fn broadcast_source_image(room: &Room) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{join_filter, new_room, room_filter, OutboundWsEvent, Rooms};
+    use crate::{join_filter, room_filter, OutboundWsEvent, Rooms};
     use image::Rgba;
-    use pretty_env_logger;
+
     use shape_evolution::random_shape::RandomCircle;
     use std::collections::HashMap;
-    use warp::Filter;
 
     /// Setup function that is only run once, even if called multiple times.
     fn setup() {
@@ -648,7 +648,7 @@ mod tests {
 
         assert_eq!(rooms.read().await.len(), 0);
 
-        let res = warp::test::request().path("/room").reply(&room).await;
+        let _res = warp::test::request().path("/room").reply(&room).await;
 
         assert_eq!(rooms.read().await.len(), 1);
 
