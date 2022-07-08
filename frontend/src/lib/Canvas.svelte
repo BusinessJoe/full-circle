@@ -2,10 +2,11 @@
     import { onMount, onDestroy } from 'svelte';
     export let width;
     export let height;
+    export let circle_limit;
 
-    export function drawCircle(circle) {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+    let circles = [];
+
+    function drawCircle(ctx, circle) {
 
         const { imgx, imgy, center, radius, color } = circle;
 
@@ -25,7 +26,26 @@
         ctx.fill();
     }
 
+    function drawCircles(circle_limit, circles) {
+        const canvas = document.getElementById('canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < circle_limit; i++) {
+                drawCircle(ctx, circles[i]);
+            }
+        }
+    }
+
+    export function addCircle(circle) {
+        circles = [...circles, circle];
+        circle_limit = circles.length;
+    }
+
     $: landscape = width > height;
+
+    $: drawCircles(circle_limit, circles);
 </script>
 
 <div id="canvas-wrapper" 

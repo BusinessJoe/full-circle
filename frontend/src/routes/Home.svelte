@@ -3,6 +3,7 @@ import { onMount, onDestroy } from 'svelte';
 import WebWorker from '../lib/WebWorker.svelte';
 import ImagePicker from '../lib/ImagePicker.svelte';
 import Canvas from '../lib/Canvas.svelte';
+import Timeline from '../lib/Timeline.svelte';
 import { arrayBufferToBase64 } from '../lib/utils.js';
 
 let worker;
@@ -19,7 +20,9 @@ let buffer = null;
 
 let epoch_count = 0;
 let circle_count = 0;
-let num_generations = 100;
+let num_generations = 30;
+
+let circle_limit;
 
 
 function onWebWorkerEvent(worker, type, payload) {
@@ -43,7 +46,7 @@ function onWebWorkerEvent(worker, type, payload) {
                 circle.center = Array.from(circle.center);
                 circle.color = Array.from(circle.color);
 
-                canvas.drawCircle(circle);
+                canvas.addCircle(circle);
             } 
 
             if (!paused) {
@@ -82,7 +85,8 @@ $: if (worker_ready && !paused && !epoch_in_progress) {
                 <input id=pause type=checkbox bind:checked={paused} />
             </label>
             <ImagePicker onSubmit={onSubmit} />
-            <Canvas width={width} height={height} bind:this={canvas} />
+            <Canvas width={width} height={height} circle_limit={circle_limit} bind:this={canvas} />
+            <Timeline max={circle_count} bind:value={circle_limit} />
         </div>
     </div>
 </main>
