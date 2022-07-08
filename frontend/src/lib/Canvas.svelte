@@ -40,7 +40,6 @@
 
     export function addCircle(circle) {
         circles = [...circles, circle];
-        circle_limit = circles.length;
     }
 
     $: landscape = width > height;
@@ -64,6 +63,7 @@
     #canvas-wrapper {
         width: min(70vh, 90vw);
         height: min(70vh, 90vw);
+
         display: flex;
         justify-content: center;
     }

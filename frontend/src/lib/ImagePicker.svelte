@@ -11,8 +11,5 @@
     }
 </script>
 
-<input type="file" data-testid="image-input" bind:files/>
+<input type="file" data-testid="image-input" bind:files on:change={_onSubmit}/>
 
-<button data-testid="submit-button" on:click={_onSubmit}>
-    Ok
-</button>

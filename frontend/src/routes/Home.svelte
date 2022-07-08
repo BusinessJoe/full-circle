@@ -4,11 +4,13 @@ import WebWorker from '../lib/WebWorker.svelte';
 import ImagePicker from '../lib/ImagePicker.svelte';
 import Canvas from '../lib/Canvas.svelte';
 import Timeline from '../lib/Timeline.svelte';
+import PlayButton from '../lib/PlayButton.svelte';
 import { arrayBufferToBase64 } from '../lib/utils.js';
 
 let worker;
 let worker_ready = false;
-let paused = false;
+let image_loaded = false;
+let paused = true;
 let epoch_in_progress = false;
 
 let canvas;
@@ -34,7 +36,7 @@ function onWebWorkerEvent(worker, type, payload) {
             const [new_width, new_height] = payload;
             width = new_width;
             height = new_height;
-            runEpoch();
+            image_loaded = true;
             break;
         case "epoch/done":
             epoch_in_progress = false;
@@ -69,7 +71,7 @@ function runEpoch() {
 }
 
 
-$: if (worker_ready && !paused && !epoch_in_progress) {
+$: if (image_loaded && !paused && !epoch_in_progress) {
     runEpoch();
 }
 </script>
@@ -78,13 +80,12 @@ $: if (worker_ready && !paused && !epoch_in_progress) {
 <WebWorker onEvent={onWebWorkerEvent} bind:worker={worker}/>
 
 <main>
-    <div id="game-wrapper">
-        <div class=panel id="main-panel">
-            <label for=pause>
-                Pause
-                <input id=pause type=checkbox bind:checked={paused} />
-            </label>
-            <ImagePicker onSubmit={onSubmit} />
+    <div id=game-wrapper>
+        <div class=panel id=main-panel>
+            <div id=controls>
+                <ImagePicker onSubmit={onSubmit} />
+                <PlayButton bind:paused={paused} disabled={!image_loaded} />
+            </div>
             <Canvas width={width} height={height} circle_limit={circle_limit} bind:this={canvas} />
             <Timeline max={circle_count} bind:value={circle_limit} />
         </div>
@@ -105,9 +106,23 @@ $: if (worker_ready && !paused && !epoch_in_progress) {
         justify-content: center;
     }
 
+
     #game-wrapper {
         display: flex;
         height: 90vh;
+    }
+
+    #controls {
+        width: 100%;
+
+        flex: 1;
+
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        align-items: center;
+
+        margin: 1em 0 1em 0;
     }
 
     .panel {
@@ -117,7 +132,7 @@ $: if (worker_ready && !paused && !epoch_in_progress) {
 
     #main-panel {
         justify-content: center;
-        padding: 10px;
+        padding: 0 10px 0 10px;
         background-color: #2b2a33;
         border-radius: 5px;
     }
