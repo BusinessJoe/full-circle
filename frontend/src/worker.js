@@ -52,26 +52,26 @@ async function init_wasm_in_worker() {
                 const { gen_size, num_gens } = payload;
                 let best_circle = test_struct.try_epoch(gen_size, num_gens);
 
+                let outbound_payload;
                 if (best_circle) {
-                    // Send response back to be handled by callback in main thread.
-                    self.postMessage({
-                        type: "epoch/done",
-                        payload: {
-                            circle: {
-                                imgx: best_circle.imgx,
-                                imgy: best_circle.imgy,
-                                center: best_circle.center,
-                                radius: best_circle.radius,
-                                color: best_circle.color,
-                            },
+                    outbound_payload = { 
+                        circle: {
+                            imgx: best_circle.imgx,
+                            imgy: best_circle.imgy,
+                            center: best_circle.center,
+                            radius: best_circle.radius,
+                            color: best_circle.color,
                         }
-                    });
+                    };
                 } else {
-                    self.postMessage({
-                        type: "epoch/done",
-                        payload: undefined
-                    });
+                    outbound_payload = undefined;
                 }
+
+                // Send response back to be handled by callback in main thread.
+                self.postMessage({
+                    type: "epoch/done",
+                    payload: outbound_payload,
+                });
                 break;
             default:
                 console.error(`action type '${type}' not recognized`);

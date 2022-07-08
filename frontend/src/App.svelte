@@ -1,19 +1,12 @@
 <script>
-    import { Router, Link, Route } from "svelte-routing";
-    import Room from "./routes/Room.svelte";
-    import Join from "./routes/Join.svelte";
+    import { Router, Route } from "svelte-routing";
+    import Home from "./routes/Home.svelte";
 
     export let url = "";
 </script>
 
 <Router url="{url}">
-  <nav>
-    <Link to="/">Home</Link>
-  </nav>
-  <div>
-    <Route path="/"><Room /></Route>
-    <Route path="/join/:id/" let:params>
-        <Join room_id="{params.id}" />
-    </Route>
-  </div>
+    <div>
+        <Route path="/"><Home /></Route>
+    </div>
 </Router>
