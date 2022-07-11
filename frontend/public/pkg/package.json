@@ -1,0 +1,11 @@
+{
+  "name": "@businessjoe/wasm",
+  "version": "0.1.1",
+  "files": [
+    "wasm_bg.wasm",
+    "wasm.js",
+    "wasm.d.ts"
+  ],
+  "browser": "wasm.js",
+  "types": "wasm.d.ts"
+}
