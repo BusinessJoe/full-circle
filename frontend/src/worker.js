@@ -1,22 +1,17 @@
 // The worker has its own scope and no direct access to functions/objects of the
 // global scope. We import the generated JS file to make `wasm_bindgen`
 // available which we need to initialize our WASM code.
-import wasm from "../../wasm/Cargo.toml";
+importScripts('../pkg/wasm.js');
+const { TestStruct } = wasm_bindgen;
 
-console.log("Initializing worker")
-
-// In the worker, we have a different struct that we want to use as in
-// `index.js`.
-//const {NumberEval} = wasm_bindgen;
-//const { TestStruct, JsRandomCircle } = wasm_bindgen;
 
 
 let test_struct;
 
 async function init_wasm_in_worker() {
+    console.log("Initializing worker")
     // Load the wasm file by awaiting the Promise returned by `wasm_bindgen`.
-    const module = await wasm();
-    const { TestStruct } = module;
+    await wasm_bindgen('../pkg/wasm_bg.wasm');
 
     // Set callback to handle messages passed to the worker.
     self.onmessage = async event => {
