@@ -1,10 +1,40 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
-    export let width;
-    export let height;
+    export let image_width;
+    export let image_height;
     export let circle_limit;
 
+    let canvas;
+    let wrapper;
+    let wrapper_dims;
+
+    let virtual_width;
+    let virtual_height;
+
     let circles = [];
+    $: aspect_ratio = image_width / image_height;
+
+    $: if (wrapper_dims) {
+        const narrower = aspect_ratio < (wrapper_dims.width / wrapper_dims.height);
+        if (narrower) {
+            // Then the limiting length is the height
+            virtual_height = wrapper_dims.height;
+            virtual_width = virtual_height * aspect_ratio;
+        } else {
+            // otherwise the limiting length is the width
+            virtual_width = wrapper_dims.width;
+            virtual_height = virtual_width / aspect_ratio;
+        }
+    }
+
+    const resizeObserver = new ResizeObserver(entries => {
+        for (let entry of entries) {
+            wrapper_dims = { 
+                width: entry.contentBoxSize[0].inlineSize, 
+                height: entry.contentBoxSize[0].blockSize,
+            };
+        }
+    });
 
     function drawCircle(ctx, circle) {
 
@@ -42,27 +72,33 @@
         circles = [...circles, circle];
     }
 
-    $: landscape = width > height;
+    $: landscape = image_width > image_height;
 
     $: drawCircles(circle_limit, circles);
+
+    onMount(() => {
+        resizeObserver.observe(wrapper);
+    });
 </script>
 
 <div id="canvas-wrapper" 
     class="canvas-wrapper"
     class:canvas-wrapper-landscape={landscape}
     class:canvas-wrapper-portrait={!landscape}
+    bind:this={wrapper}
 >
-    <canvas id="canvas" width={width} height={height} 
+    <canvas id="canvas" width={virtual_width} height={virtual_height} 
         class="canvas"
         class:canvas-landscape={landscape}
         class:canvas-portrait={!landscape}
+        bind:this={canvas}
     />
 </div>
 
 <style>
     #canvas-wrapper {
-        width: min(70vh, 90vw);
-        height: min(70vh, 90vw);
+        width: 90%;
+        height: 90%;
 
         display: flex;
         justify-content: center;
@@ -86,32 +122,15 @@
     }
 
     .canvas {
+        position: absolute;
         border: 1px solid white;
         background-color: #000;
-        position: absolute;
     }
 
     .canvas-wrapper {
         position: relative;
-    }
-
-    .canvas-wrapper-landscape {
         flex-direction: column;
-    }
-
-    .canvas-landscape {
-        width: 100%;
-        height: auto;
-    }
-
-    .canvas-wrapper-portrait {
-        flex-direction: row;
-    }
-
-    .canvas-portrait {
-        height: 100%;
-        width: auto;
-        margin-left: auto;
-        margin-right: auto;
+        justify-content: center;
+        align-items: center;
     }
 </style>

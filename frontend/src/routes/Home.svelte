@@ -27,6 +27,7 @@ let num_generations = 30;
 let circle_limit;
 
 
+
 function onWebWorkerEvent(worker, type, payload) {
     switch (type) {
         case "ready":
@@ -81,14 +82,12 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
 
 <main>
     <div id=game-wrapper>
-        <div class=panel id=main-panel>
-            <div id=controls>
-                <ImagePicker onSubmit={onSubmit} />
-                <PlayButton bind:paused={paused} disabled={!image_loaded} />
-            </div>
-            <Canvas width={width} height={height} circle_limit={circle_limit} bind:this={canvas} />
-            <Timeline max={circle_count} bind:value={circle_limit} />
+        <div id=controls>
+            <ImagePicker onSubmit={onSubmit} />
+            <PlayButton bind:paused={paused} disabled={!image_loaded} />
         </div>
+        <Canvas image_width={width} image_height={height} circle_limit={circle_limit} bind:this={canvas} />
+        <Timeline max={circle_count} bind:value={circle_limit} />
     </div>
 </main>
 
@@ -109,7 +108,15 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
 
     #game-wrapper {
         display: flex;
+        flex-direction: column;
         height: 90vh;
+        width: 90vw;
+
+        justify-content: center;
+        align-items: center;
+        padding: 0 10px 0 10px;
+        background-color: #2b2a33;
+        border-radius: 5px;
     }
 
     #controls {
@@ -125,15 +132,6 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
         margin: 1em 0 1em 0;
     }
 
-    .panel {
-        display: flex;
-        flex-direction: column;
-    }
-
     #main-panel {
-        justify-content: center;
-        padding: 0 10px 0 10px;
-        background-color: #2b2a33;
-        border-radius: 5px;
     }
 </style>
