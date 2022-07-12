@@ -101,8 +101,11 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
     }
 
     main {
+        height: 100%;
+        width: 100%;
         display: flex;
         justify-content: center;
+        align-items: center;
     }
 
 
@@ -130,8 +133,5 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
         align-items: center;
 
         margin: 1em 0 1em 0;
-    }
-
-    #main-panel {
     }
 </style>

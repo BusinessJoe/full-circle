@@ -6,26 +6,19 @@
 
     let canvas;
     let wrapper;
-    let wrapper_dims;
 
-    let virtual_width;
-    let virtual_height;
+    let wrapper_dims;
+    $: aspect_ratio = image_width / image_height;
+    let virtual_width = 1000;
+    $: virtual_height = virtual_width / aspect_ratio;
+    let narrower;
+    $: if (wrapper_dims) {
+        narrower = aspect_ratio < (wrapper_dims.width / wrapper_dims.height);
+    }
+
 
     let circles = [];
-    $: aspect_ratio = image_width / image_height;
 
-    $: if (wrapper_dims) {
-        const narrower = aspect_ratio < (wrapper_dims.width / wrapper_dims.height);
-        if (narrower) {
-            // Then the limiting length is the height
-            virtual_height = wrapper_dims.height;
-            virtual_width = virtual_height * aspect_ratio;
-        } else {
-            // otherwise the limiting length is the width
-            virtual_width = wrapper_dims.width;
-            virtual_height = virtual_width / aspect_ratio;
-        }
-    }
 
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
@@ -81,16 +74,14 @@
     });
 </script>
 
-<div id="canvas-wrapper" 
-    class="canvas-wrapper"
-    class:canvas-wrapper-landscape={landscape}
-    class:canvas-wrapper-portrait={!landscape}
+<div id=canvas-wrapper 
+    class=canvas-wrapper
     bind:this={wrapper}
 >
-    <canvas id="canvas" width={virtual_width} height={virtual_height} 
-        class="canvas"
-        class:canvas-landscape={landscape}
-        class:canvas-portrait={!landscape}
+    <canvas id=canvas width={virtual_width} height={virtual_height} 
+        class=canvas
+        class:width-limited={!narrower}
+        class:height-limited={narrower}
         bind:this={canvas}
     />
 </div>
@@ -132,5 +123,15 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
+    }
+
+    .width-limited {
+        width: 100%;
+        height: auto;
+    }
+
+    .height-limited {
+        height: 100%;
+        width: auto;
     }
 </style>
