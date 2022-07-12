@@ -82,12 +82,14 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
 
 <main>
     <div id=game-wrapper>
-        <div id=controls>
+        <div id=controls class=paper>
             <ImagePicker onSubmit={onSubmit} />
             <PlayButton bind:paused={paused} disabled={!image_loaded} />
         </div>
         <Canvas image_width={width} image_height={height} circle_limit={circle_limit} bind:this={canvas} />
-        <Timeline max={circle_count} bind:value={circle_limit} />
+        <div id=timeline-wrapper class=paper>
+            <Timeline max={circle_count} bind:value={circle_limit} />
+        </div>
     </div>
 </main>
 
@@ -100,30 +102,35 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
             color: white;
     }
 
+    :global(body) {
+        margin: 0;
+    }
+
     main {
-        height: 100%;
+        height: 100vh;
         width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
         display: flex;
         justify-content: center;
-        align-items: center;
     }
 
 
     #game-wrapper {
         display: flex;
         flex-direction: column;
-        height: 90vh;
-        width: 90vw;
-
+        gap: 10px;
         justify-content: center;
         align-items: center;
+
+        height: 100%;
+        width: 90%;
+
         padding: 0 10px 0 10px;
-        background-color: #2b2a33;
-        border-radius: 5px;
     }
 
     #controls {
-        width: 100%;
+        max-width: 50%;
 
         flex: 1;
 
@@ -132,6 +139,19 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
         justify-content: space-around;
         align-items: center;
 
-        margin: 1em 0 1em 0;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+
+    #timeline-wrapper {
+        width: 35vw;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+
+    .paper {
+        background-color: #2b2a33;
+        border-radius: 5px;
+        padding: 5px;
     }
 </style>
