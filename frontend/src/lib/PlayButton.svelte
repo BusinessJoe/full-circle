@@ -7,6 +7,19 @@
     $: play_color = disabled ? disabled_play_color : base_play_color;
 
     let pause_color = "rgb(234, 155, 44)";
+
+    document.addEventListener('keypress', event => {
+        if (event.key === " " && !disabled) {
+            event.preventDefault();
+            paused = !paused;
+        }
+    });
+    // Hacky way to prevent spacebar from clicking focused buttons
+    document.addEventListener('keyup', event => {
+        if (event.key === " " && !disabled) {
+            event.preventDefault();
+        }
+    });
 </script>
 
 <!--
