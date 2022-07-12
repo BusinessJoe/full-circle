@@ -1,4 +1,5 @@
 use crate::image_diff::image_diff;
+use crate::mutate::Mutate;
 use image::GenericImageView;
 use image::{Pixel, Rgba};
 use rand::Rng;
@@ -20,7 +21,7 @@ pub struct BoundingBox {
     pub height: u32,
 }
 
-pub trait RandomShape {
+pub trait RandomShape: Mutate {
     #[must_use]
     fn draw(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage;
 
@@ -28,9 +29,6 @@ pub trait RandomShape {
     // get_bounds().
     #[must_use]
     fn draw_subimage(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage;
-
-    #[must_use]
-    fn mutate(&self) -> Self;
 
     #[must_use]
     fn get_bounds(&self, scale: f64) -> Option<BoundingBox>;
@@ -124,37 +122,6 @@ impl RandomCircle {
     }
 }
 
-#[must_use]
-fn clamp_channel(c: i32) -> u8 {
-    cmp::max(0, cmp::min(255, c)) as u8
-}
-
-#[must_use]
-fn mutate_center(center: (i32, i32), rng: &mut rand::rngs::ThreadRng) -> (i32, i32) {
-    let dc1 = rng.gen_range(-5..=5);
-    let dc2 = rng.gen_range(-5..=5);
-    (center.0 + dc1, center.1 + dc2)
-}
-
-#[must_use]
-fn mutate_radius(radius: i32, rng: &mut rand::rngs::ThreadRng) -> i32 {
-    let drad = rng.gen_range(-20..=2);
-    cmp::max(radius + drad, 1)
-}
-
-#[must_use]
-fn mutate_color(color: image::Rgba<u8>, rng: &mut rand::rngs::ThreadRng) -> image::Rgba<u8> {
-    let dr = rng.gen_range(-20..=20);
-    let dg = rng.gen_range(-20..=20);
-    let db = rng.gen_range(-20..=20);
-
-    let r = clamp_channel(i32::from(color.channels()[0]) + dr);
-    let g = clamp_channel(i32::from(color.channels()[1]) + dg);
-    let b = clamp_channel(i32::from(color.channels()[2]) + db);
-
-    image::Rgba([r, g, b, 255])
-}
-
 impl RandomShape for RandomCircle {
     fn draw(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage {
         let center = (
@@ -177,21 +144,6 @@ impl RandomShape for RandomCircle {
         let radius = (self.radius as f64 * scale) as i32;
         // Pass a reference to image, since the new value of image is no longer a reference.
         imageproc::drawing::draw_filled_circle(&image, center, radius, self.color)
-    }
-
-    fn mutate(&self) -> Self {
-        let mut rng = rand::thread_rng();
-
-        let center = mutate_center(self.center, &mut rng);
-        let color = mutate_color(self.color, &mut rng);
-        let radius = mutate_radius(self.radius, &mut rng);
-        Self {
-            imgx: self.imgx,
-            imgy: self.imgy,
-            center,
-            radius,
-            color,
-        }
     }
 
     fn get_bounds(&self, scale: f64) -> Option<BoundingBox> {

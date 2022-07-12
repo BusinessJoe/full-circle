@@ -27,8 +27,8 @@ impl TestStruct {
         let (width, height) = target_img.dimensions();
 
         // Scale the target image down to an appropriate size
-        // 500 × 500 = 250,000 pixels seems good enough
-        const TARGET_NUM_PIXELS: u32 = 500 * 500;
+        // 300 × 300 = 90,000 pixels seems good enough
+        const TARGET_NUM_PIXELS: u32 = 200 * 200;
         let target_scale_factor: f64 =
             (f64::from(width * height) / f64::from(TARGET_NUM_PIXELS)).sqrt();
         let target_img = image::imageops::resize(
@@ -39,7 +39,7 @@ impl TestStruct {
         );
         let (width, height) = target_img.dimensions();
 
-        let scale = std::cmp::max(width, height) as f64 / 100.0;
+        let scale: f64 = 1.0;
         let (scaled_width, scaled_height) = (
             (width as f64 / scale) as u32,
             (height as f64 / scale) as u32,

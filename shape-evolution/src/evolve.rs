@@ -1,5 +1,7 @@
+use crate::mutate::Mutate;
 use crate::random_shape::{RandomCircle, RandomShape};
 use image::RgbaImage;
+use rand;
 use std::iter;
 use std::path::Path;
 
@@ -22,7 +24,9 @@ pub fn next_generation(
     target_img: &image::RgbaImage,
     current_img: &image::RgbaImage,
     current_gen: &[RandomCircle],
+    mutation_factor: f64,
 ) -> Vec<RandomCircle> {
+    let rng = rand::thread_rng();
     let (imgx, imgy) = target_img.dimensions();
     let mut newvec = current_gen.to_vec();
 
@@ -31,7 +35,9 @@ pub fn next_generation(
     newvec.truncate(20);
     let children: Vec<RandomCircle> = newvec
         .iter()
-        .flat_map(|shape| iter::repeat_with(|| shape.mutate()).take(3))
+        .flat_map(|shape| {
+            iter::repeat_with(|| shape.mutate(&mut rng.clone(), mutation_factor)).take(3)
+        })
         .collect();
     newvec.extend(children);
     newvec.extend(iter::repeat_with(|| RandomCircle::new(imgx, imgy)).take(20));
@@ -56,8 +62,14 @@ pub fn epoch(
         .take(100)
         .collect();
 
-    for _i in 0..num_gens {
-        shapes = next_generation(scaled_target_img, scaled_current_img, &shapes);
+    for i in 0..num_gens {
+        let mutation_factor: f64 = 1.0 - 0.9 / f64::from(i * num_gens + 1);
+        shapes = next_generation(
+            scaled_target_img,
+            scaled_current_img,
+            &shapes,
+            mutation_factor,
+        );
     }
 
     let best_shape = shapes

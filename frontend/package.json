@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "wasm-build": "wasm-pack build ../wasm/ -t no-modules -d ../frontend/public/pkg/",
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "start": "sirv public --no-clear --port 3000 --host --single",
