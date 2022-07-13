@@ -3,7 +3,7 @@
 export const memory: WebAssembly.Memory;
 export function __wbg_teststruct_free(a: number): void;
 export function teststruct_new_async(a: number, b: number): number;
-export function teststruct_new_from_buffer(a: number): number;
+export function teststruct_new_from_buffer(a: number, b: number): void;
 export function teststruct_get_image_data(a: number, b: number): void;
 export function teststruct_try_epoch(a: number, b: number, c: number): number;
 export function teststruct_get_target_width(a: number): number;

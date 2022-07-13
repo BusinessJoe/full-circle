@@ -65,7 +65,7 @@ declare interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_teststruct_free: (a: number) => void;
   readonly teststruct_new_async: (a: number, b: number) => number;
-  readonly teststruct_new_from_buffer: (a: number) => number;
+  readonly teststruct_new_from_buffer: (a: number, b: number) => void;
   readonly teststruct_get_image_data: (a: number, b: number) => void;
   readonly teststruct_try_epoch: (a: number, b: number, c: number) => number;
   readonly teststruct_get_target_width: (a: number) => number;

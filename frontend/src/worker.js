@@ -36,12 +36,19 @@ async function init_wasm_in_worker() {
                 break;
             case "init/buffer":
                 const buffer = payload;
-                test_struct = TestStruct.new_from_buffer(buffer);
-                console.log("loaded from buffer!");
-                self.postMessage({
-                    type: "init/done",
-                    payload: [test_struct.get_target_width(), test_struct.get_target_height()]
-                });
+                try {
+                    test_struct = TestStruct.new_from_buffer(buffer);
+                    console.log("loaded from buffer!");
+                    self.postMessage({
+                        type: "init/done",
+                        payload: [test_struct.get_target_width(), test_struct.get_target_height()]
+                    });
+                } catch (error) {
+                    self.postMessage({
+                        type: "init/error",
+                        payload: error
+                    });
+                }
                 break;
             case "epoch":
                 const { gen_size, num_gens } = payload;

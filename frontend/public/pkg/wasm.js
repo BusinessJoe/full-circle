@@ -380,8 +380,19 @@ class TestStruct {
     * @returns {TestStruct}
     */
     static new_from_buffer(buffer) {
-        const ret = wasm.teststruct_new_from_buffer(addHeapObject(buffer));
-        return TestStruct.__wrap(ret);
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.teststruct_new_from_buffer(retptr, addHeapObject(buffer));
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return TestStruct.__wrap(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
     * @returns {any}

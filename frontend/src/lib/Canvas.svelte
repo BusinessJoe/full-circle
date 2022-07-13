@@ -95,23 +95,6 @@
         justify-content: center;
     }
 
-    @keyframes fadeIn {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    .fade {
-        animation: fadeIn 2.0s;
-        transition: opacity 0.3s;
-    }
-
-    .fade:hover {
-        opacity: 0%;
-    }
-
-    .hide {
-        visibility: hidden;
-    }
-
     .canvas {
         position: absolute;
         border: 1px solid white;

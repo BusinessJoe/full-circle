@@ -69,11 +69,11 @@ impl TestStruct {
         Self::new_from_image(target_img)
     }
 
-    pub fn new_from_buffer(buffer: ArrayBuffer) -> Self {
+    pub fn new_from_buffer(buffer: ArrayBuffer) -> Result<TestStruct, JsValue> {
         utils::set_panic_hook();
 
-        let target_img = web::load_image_from_buffer(&buffer).unwrap();
-        Self::new_from_image(target_img)
+        let target_img = web::load_image_from_buffer(&buffer)?;
+        Ok(TestStruct::new_from_image(target_img))
     }
 
     pub fn get_image_data(&self) -> Result<JsValue, JsValue> {

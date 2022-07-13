@@ -15,6 +15,8 @@ let epoch_in_progress = false;
 
 let canvas;
 
+let load_error = "";
+
 let width = 100;
 let height = 100;
 
@@ -38,6 +40,10 @@ function onWebWorkerEvent(worker, type, payload) {
             width = new_width;
             height = new_height;
             image_loaded = true;
+            break;
+        case "init/error":
+            console.error(payload);
+            load_error = "Failed to load image";
             break;
         case "epoch/done":
             epoch_in_progress = false;
@@ -63,6 +69,7 @@ function onWebWorkerEvent(worker, type, payload) {
 }
 
 function onSubmit(buf) {
+    load_error = "";
     worker.postMessage({ type: "init/buffer", payload: buf });
 }
 
@@ -83,7 +90,7 @@ $: if (image_loaded && !paused && !epoch_in_progress) {
 <main>
     <div id=game-wrapper>
         <div id=controls class=paper>
-            <ImagePicker onSubmit={onSubmit} />
+            <ImagePicker onSubmit={onSubmit} error={load_error} />
             <PlayButton bind:paused={paused} disabled={!image_loaded} />
         </div>
         <Canvas image_width={width} image_height={height} circle_limit={circle_limit} bind:this={canvas} />
