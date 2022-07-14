@@ -44,6 +44,8 @@
         background-repeat: no-repeat;
         background-size: auto, 20px;
         background-position: center;
+        min-width: 40px;
+        min-height: 40px;
         width: 40px;
         height: 40px;
         border: none;
