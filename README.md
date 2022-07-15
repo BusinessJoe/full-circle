@@ -1,2 +1,10 @@
-Compile wasm with `wasm-pack build --target no-modules --out-dir ../www/pkg wasm/`.
-Compile server/cli app with `cargo build`.
+
+# Unnamed Circle Project
+
+Naming things is hard. This is a Rust project which takes an input image
+and tried to recreate it by layering multicoloured circles on a blank
+canvas. 
+
+The code can be compiled into a WebAssembly package and used in a browser. 
+[Check it out here](https://circles-lovat.vercel.app/).
+The frontend code is in the `frontend` directory.
