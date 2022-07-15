@@ -13,7 +13,7 @@ pub fn sort_generation(
     current_img: &image::RgbaImage,
     mut gen: Vec<RandomCircle>,
 ) -> Vec<RandomCircle> {
-    gen.sort_by_cached_key(|shape| shape.score(target_img, current_img, 1.0));
+    gen.sort_by_cached_key(|shape| shape.score(target_img, current_img));
     gen
 }
 
@@ -51,12 +51,9 @@ pub fn epoch(
     num_gens: u32,
     target_img: &image::RgbaImage,
     current_img: &image::RgbaImage,
-    scaled_target_img: &image::RgbaImage,
-    scaled_current_img: &image::RgbaImage,
-    scale: f64,
-    current_score: i64,
-) -> Option<(RandomCircle, i64)> {
-    let (imgx, imgy) = scaled_target_img.dimensions();
+    current_score: u128,
+) -> Option<(RandomCircle, u128)> {
+    let (imgx, imgy) = target_img.dimensions();
 
     let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
         .take(100)
@@ -65,8 +62,8 @@ pub fn epoch(
     for i in 0..num_gens {
         let mutation_factor: f64 = 1.0 - 0.9 / f64::from(i * num_gens + 1);
         shapes = next_generation(
-            scaled_target_img,
-            scaled_current_img,
+            target_img,
+            current_img,
             &shapes,
             mutation_factor,
         );
@@ -74,11 +71,16 @@ pub fn epoch(
 
     let best_shape = shapes
         .into_iter()
-        .min_by_key(|shape| shape.score(scaled_target_img, scaled_current_img, 1.0))
+        .min_by_key(|shape| shape.score(target_img, current_img))
         .unwrap();
 
     // Calculate the score for the current image at full scale.
-    let new_score = current_score + best_shape.score(target_img, current_img, scale);
+    let delta = best_shape.score(target_img, current_img);
+    let new_score = if delta >= 0 {
+        current_score + delta as u128
+    } else {
+        current_score - delta.unsigned_abs() as u128
+    };
 
     println!("score diff {}", new_score - current_score);
 
@@ -90,24 +92,13 @@ pub fn epoch(
     }
 }
 
-pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str, scale: f64) {
+pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str) {
     let target_img = image::open(input_path).unwrap().to_rgba8();
 
     let (imgx, imgy) = target_img.dimensions();
-    let mut score = (imgx * imgy * 255 * 3) as i64;
+    let mut score = (imgx * imgy * 255 * 3) as u128;
 
-    // Unscaled image used for output
     let mut outbuf = RgbaImage::new(imgx, imgy);
-
-    // Create a scaled down target image for faster drawing and scoring
-    let scaled_target_img = image::imageops::resize(
-        &target_img,
-        (imgx as f64 / scale) as u32,
-        (imgy as f64 / scale) as u32,
-        image::imageops::FilterType::Nearest,
-    );
-
-    let (imgx, imgy) = scaled_target_img.dimensions();
     let mut imgbuf = RgbaImage::new(imgx, imgy);
 
     for i in 1..=num_epochs {
@@ -116,15 +107,12 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
             num_gens,
             &target_img,
             &outbuf,
-            &scaled_target_img,
-            &imgbuf,
-            scale,
             score,
         ) {
             Some((best_shape, new_score)) => {
                 score = new_score;
-                outbuf = best_shape.draw(&outbuf, scale);
-                imgbuf = best_shape.draw(&imgbuf, 1.0);
+                outbuf = best_shape.draw(&outbuf);
+                imgbuf = best_shape.draw(&imgbuf);
             }
             None => {
                 //println!("Discarded epoch");

@@ -15,10 +15,7 @@ pub mod web;
 pub struct TestStruct {
     target_img: image::RgbaImage,
     current_img: image::RgbaImage,
-    scaled_target_img: image::RgbaImage,
-    scaled_current_img: image::RgbaImage,
-    scale: f64,
-    current_score: i64,
+    current_score: u128,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -39,26 +36,10 @@ impl TestStruct {
         );
         let (width, height) = target_img.dimensions();
 
-        let scale: f64 = 1.0;
-        let (scaled_width, scaled_height) = (
-            (width as f64 / scale) as u32,
-            (height as f64 / scale) as u32,
-        );
-        // Create a scaled down target image for faster drawing and scoring
-        let scaled_target_img = image::imageops::resize(
-            &target_img,
-            scaled_width,
-            scaled_height,
-            image::imageops::FilterType::Nearest,
-        );
-
         Self {
             target_img,
             current_img: RgbaImage::new(width, height),
-            scaled_target_img,
-            scaled_current_img: RgbaImage::new(scaled_width, scaled_height),
-            scale,
-            current_score: i64::from(width * height * 255 * 3),
+            current_score: u128::from(width * height * 255 * 3),
         }
     }
 
@@ -90,15 +71,11 @@ impl TestStruct {
             num_gens,
             &self.target_img,
             &self.current_img,
-            &self.scaled_target_img,
-            &self.scaled_current_img,
-            self.scale,
             self.current_score,
         ) {
             Some((best_shape, new_score)) => {
                 self.current_score = new_score;
-                self.current_img = best_shape.draw(&self.current_img, self.scale);
-                self.scaled_current_img = best_shape.draw(&self.scaled_current_img, 1.0);
+                self.current_img = best_shape.draw(&self.current_img);
 
                 Some(best_shape)
             }

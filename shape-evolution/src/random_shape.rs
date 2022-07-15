@@ -23,15 +23,15 @@ pub struct BoundingBox {
 
 pub trait RandomShape: Mutate {
     #[must_use]
-    fn draw(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage;
+    fn draw(&self, image: &image::RgbaImage) -> image::RgbaImage;
 
     // Returns the same output as draw, but cropped to the bounding box returned by
     // get_bounds().
     #[must_use]
-    fn draw_subimage(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage;
+    fn draw_subimage(&self, image: &image::RgbaImage) -> image::RgbaImage;
 
     #[must_use]
-    fn get_bounds(&self, scale: f64) -> Option<BoundingBox>;
+    fn get_bounds(&self) -> Option<BoundingBox>;
 
     // Calculates and returns how close the current image becomes to the target after this shape is
     // drawn. Smaller scores are better.
@@ -40,7 +40,6 @@ pub trait RandomShape: Mutate {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        scale: f64,
     ) -> i64;
 }
 
@@ -123,30 +122,24 @@ impl RandomCircle {
 }
 
 impl RandomShape for RandomCircle {
-    fn draw(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage {
-        let center = (
-            (self.center.0 as f64 * scale) as i32,
-            (self.center.1 as f64 * scale) as i32,
-        );
-        let radius = (self.radius as f64 * scale) as i32;
-        imageproc::drawing::draw_filled_circle(image, center, radius, self.color)
+    fn draw(&self, image: &image::RgbaImage) -> image::RgbaImage {
+        imageproc::drawing::draw_filled_circle(image, self.center, self.radius, self.color)
     }
 
-    fn draw_subimage(&self, image: &image::RgbaImage, scale: f64) -> image::RgbaImage {
-        let bounds = self.get_bounds(scale).unwrap();
+    fn draw_subimage(&self, image: &image::RgbaImage) -> image::RgbaImage {
+        let bounds = self.get_bounds().unwrap();
         let image = image
             .view(bounds.x, bounds.y, bounds.width, bounds.height)
             .to_image();
         let center = (
-            (self.center.0 as f64 * scale - bounds.x as f64) as i32,
-            (self.center.1 as f64 * scale - bounds.y as f64) as i32,
+            (self.center.0 - i32::try_from(bounds.x).unwrap()),
+            (self.center.1 - i32::try_from(bounds.y).unwrap()),
         );
-        let radius = (self.radius as f64 * scale) as i32;
         // Pass a reference to image, since the new value of image is no longer a reference.
-        imageproc::drawing::draw_filled_circle(&image, center, radius, self.color)
+        imageproc::drawing::draw_filled_circle(&image, center, self.radius, self.color)
     }
 
-    fn get_bounds(&self, scale: f64) -> Option<BoundingBox> {
+    fn get_bounds(&self) -> Option<BoundingBox> {
         let x = cmp::max(self.center.0 - self.radius - 1, 0);
         let y = cmp::max(self.center.1 - self.radius - 1, 0);
         let x2 = cmp::min(self.center.0 + self.radius + 1, (self.imgx - 1) as i32);
@@ -162,10 +155,10 @@ impl RandomShape for RandomCircle {
         }
 
         Some(BoundingBox {
-            x: (x as f64 * scale) as u32,
-            y: (y as f64 * scale) as u32,
-            width: ((x2 - x + 1) as f64 * scale) as u32,
-            height: ((y2 - y + 1) as f64 * scale) as u32,
+            x: x.try_into().unwrap(),
+            y: y.try_into().unwrap(),
+            width: (x2 - x + 1).try_into().unwrap(),
+            height: (y2 - y + 1).try_into().unwrap(),
         })
     }
 
@@ -173,12 +166,11 @@ impl RandomShape for RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        scale: f64,
     ) -> i64 {
-        if self.get_bounds(scale) == None {
+        if self.get_bounds() == None {
             return 0; // If the bounds lay outside the image, this shape does not change the image
         }
-        self.score_bresenham(target_img, current_img, scale)
+        self.score_bresenham(target_img, current_img)
 
         /*
         // Compare the area of the bounding box to the area of the target image - if the bounding
@@ -222,10 +214,9 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        scale: f64,
         prev_score: i64,
     ) -> i64 {
-        let bounds = self.get_bounds(scale).unwrap();
+        let bounds = self.get_bounds().unwrap();
 
         let cropped_target = target_img
             .view(bounds.x, bounds.y, bounds.width, bounds.height)
@@ -234,7 +225,7 @@ impl RandomCircle {
             .view(bounds.x, bounds.y, bounds.width, bounds.height)
             .to_image();
 
-        let new_img = self.draw_subimage(current_img, scale);
+        let new_img = self.draw_subimage(current_img);
 
         let prev_cropped_score = image_diff(&cropped_target, &cropped_current);
         let new_cropped_score = image_diff(&cropped_target, &new_img);
@@ -248,9 +239,8 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        scale: f64,
     ) -> i64 {
-        let new_img = self.draw(current_img, scale);
+        let new_img = self.draw(current_img);
         image_diff(target_img, &new_img)
     }
 
@@ -311,12 +301,11 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        scale: f64,
     ) -> i64 {
         let mut diff = 0i64;
 
-        let mut error = (-self.radius as f64 * scale) as i32;
-        let mut x = (self.radius as f64 * scale) as i32;
+        let mut error = -self.radius;
+        let mut x = self.radius;
         let mut y = 0;
 
         while x >= y {
@@ -328,8 +317,8 @@ impl RandomCircle {
             diff += Self::score_plot4points(
                 target_img,
                 current_img,
-                (self.center.0 as f64 * scale) as i32,
-                (self.center.1 as f64 * scale) as i32,
+                self.center.0,
+                self.center.1,
                 x,
                 last_y,
                 self.color,
@@ -340,8 +329,8 @@ impl RandomCircle {
                     diff += Self::score_plot4points(
                         target_img,
                         current_img,
-                        (self.center.0 as f64 * scale) as i32,
-                        (self.center.1 as f64 * scale) as i32,
+                        self.center.0,
+                        self.center.1,
                         last_y,
                         x,
                         self.color,
@@ -401,15 +390,14 @@ mod tests {
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
         prev_score: i64,
-        scale: f64,
     ) {
-        match shape.get_bounds(scale) {
+        match shape.get_bounds() {
             Some(_b) => {}
             None => return,
         };
-        let score_small = shape.score_small(target_img, current_img, scale, prev_score);
-        let score_large = shape.score_large(target_img, current_img, scale);
-        let score_bresenham = shape.score_bresenham(target_img, current_img, scale);
+        let score_small = shape.score_small(target_img, current_img, prev_score);
+        let score_large = shape.score_large(target_img, current_img);
+        let score_bresenham = shape.score_bresenham(target_img, current_img);
         assert_eq!(score_small, score_large);
 
         // The Bresenham algorithm isn't exactly the same as the others - we're happy with it being
@@ -457,25 +445,6 @@ mod tests {
 
         for shape in shapes {
             assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
-        }
-    }
-
-    #[test]
-    fn test_scoring_algs_equal_scale_5() {
-        let (imgx, imgy) = (10, 15);
-        let scale = 5;
-
-        // Create 1000 random shapes for testing
-        let shapes = iter::repeat_with(|| RandomCircle::new(imgx, imgy)).take(1000);
-
-        let target_img = RgbaImage::new(imgx * scale, imgy * scale);
-        let current_img = RgbaImage::new(imgx * scale, imgy * scale);
-        let prev_score = image_diff(&target_img, &current_img);
-
-        assert_eq!(prev_score, 0);
-
-        for shape in shapes {
-            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, scale as f64);
         }
     }
 
