@@ -1,5 +1,5 @@
 #[must_use]
-pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> i64 {
+pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> u128 {
     assert!(
         a.dimensions() == b.dimensions(),
         "Images have different sizes, {:?} != {:?}",
@@ -11,14 +11,14 @@ pub fn image_diff(a: &image::RgbaImage, b: &image::RgbaImage) -> i64 {
 }
 
 // Ignores alpha channel
-fn sum_chunked(samples_a: &[u8], samples_b: &[u8]) -> i64 {
+fn sum_chunked(samples_a: &[u8], samples_b: &[u8]) -> u128 {
     samples_a
         .chunks_exact(4)
         .zip(samples_b.chunks_exact(4))
         .fold(0, |sum, (p_a, p_b)| {
-            sum + (i64::from(p_a[0]) - i64::from(p_b[0])).abs()
-                + (i64::from(p_a[1]) - i64::from(p_b[1])).abs()
-                + (i64::from(p_a[2]) - i64::from(p_b[2])).abs()
+            sum + (p_a[0].abs_diff(p_b[0])) as u128
+                + (p_a[1].abs_diff(p_b[1])) as u128
+                + (p_a[2].abs_diff(p_b[2])) as u128
         })
 }
 

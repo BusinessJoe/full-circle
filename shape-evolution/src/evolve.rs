@@ -1,5 +1,6 @@
 use crate::mutate::Mutate;
 use crate::random_shape::{RandomCircle, RandomShape};
+use crate::image_diff::image_diff;
 use image::RgbaImage;
 use rand;
 use std::iter;
@@ -82,7 +83,7 @@ pub fn epoch(
         current_score - delta.unsigned_abs() as u128
     };
 
-    println!("score diff {}", new_score - current_score);
+    println!("score per pixel: {}", new_score as f64 / (imgx * imgy) as f64);
 
     // Save the shape if it was an improvement
     if new_score < current_score {
@@ -92,27 +93,34 @@ pub fn epoch(
     }
 }
 
-pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str) {
+pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &str, scale_down: f64) {
     let target_img = image::open(input_path).unwrap().to_rgba8();
+    let (width, height) = target_img.dimensions();
+    let mut output_img = RgbaImage::new(width, height);
 
-    let (imgx, imgy) = target_img.dimensions();
-    let mut score = (imgx * imgy * 255 * 3) as u128;
+    let target_img = image::imageops::resize(
+        &target_img,
+        (f64::from(width) / scale_down) as u32,
+        (f64::from(height) / scale_down) as u32,
+        image::imageops::FilterType::Nearest,
+    );
+    let (width, height) = target_img.dimensions();
 
-    let mut outbuf = RgbaImage::new(imgx, imgy);
-    let mut imgbuf = RgbaImage::new(imgx, imgy);
+    let mut current_img = RgbaImage::new(width, height);
+    let mut score = u128::from(width * height) * 255 * 3;
 
     for i in 1..=num_epochs {
         match epoch(
             100,
             num_gens,
             &target_img,
-            &outbuf,
+            &current_img,
             score,
         ) {
             Some((best_shape, new_score)) => {
                 score = new_score;
-                outbuf = best_shape.draw(&outbuf);
-                imgbuf = best_shape.draw(&imgbuf);
+                current_img = best_shape.draw(&current_img);
+                output_img = best_shape.scale_up(scale_down).draw(&output_img);
             }
             None => {
                 //println!("Discarded epoch");
@@ -120,8 +128,8 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
         }
 
         // Save the output buffer periodically.
-        if i % 10 == 0 {
-            outbuf
+        if i % 100 == 0 {
+            output_img
                 .save(Path::new(output_folder).join(format!("out-{}-{}.jpg", i, score)))
                 .expect("Could not save image");
         }
@@ -129,7 +137,7 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
         println!("Done epoch {} of {}", i, num_epochs);
     }
 
-    outbuf
+    output_img
         .save(Path::new(output_folder).join("out.jpg"))
         .expect("Could not save image");
 }

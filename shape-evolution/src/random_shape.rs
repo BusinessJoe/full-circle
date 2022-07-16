@@ -40,7 +40,9 @@ pub trait RandomShape: Mutate {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-    ) -> i64;
+    ) -> i128;
+
+    fn scale_up(&self, scale: f64) -> Self;
 }
 
 // Serializer and deserializer for an Rgba<u8> struct. Used by RandomCircle for its color field.
@@ -166,7 +168,7 @@ impl RandomShape for RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-    ) -> i64 {
+    ) -> i128 {
         if self.get_bounds() == None {
             return 0; // If the bounds lay outside the image, this shape does not change the image
         }
@@ -181,6 +183,19 @@ impl RandomShape for RandomCircle {
             self.score_large(target_img, current_img, scale)
         }
         */
+    }
+
+    fn scale_up(&self, scale: f64) -> Self {
+        Self {
+            imgx: (f64::from(self.imgx) * scale).round() as u32,
+            imgy: (f64::from(self.imgy) * scale).round() as u32,
+            center: (
+                (f64::from(self.center.0) * scale).round() as i32, 
+                (f64::from(self.center.1) * scale).round() as i32,
+            ),
+            radius: (f64::from(self.radius) * scale).round() as i32,
+            color: self.color,
+        }
     }
 }
 
@@ -214,8 +229,8 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        prev_score: i64,
-    ) -> i64 {
+        prev_score: u128,
+    ) -> u128 {
         let bounds = self.get_bounds().unwrap();
 
         let cropped_target = target_img
@@ -239,15 +254,15 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-    ) -> i64 {
+    ) -> u128 {
         let new_img = self.draw(current_img);
         image_diff(target_img, &new_img)
     }
 
-    fn pixel_diff(p1: &[u8], p2: &[u8]) -> i64 {
-        (i64::from(p1[0]) - i64::from(p2[0])).abs()
-            + (i64::from(p1[1]) - i64::from(p2[1])).abs()
-            + (i64::from(p1[2]) - i64::from(p2[2])).abs()
+    fn pixel_diff(p1: &[u8], p2: &[u8]) -> i128 {
+        (p1[0].abs_diff(p2[0])) as i128
+            + (p1[1].abs_diff(p2[1])) as i128
+            + (p1[2].abs_diff(p2[2])) as i128
     }
 
     // Calculates the score difference after drawing a horizontal line across current_img.
@@ -258,8 +273,8 @@ impl RandomCircle {
         x1: i32,
         y: i32,
         color: Rgba<u8>,
-    ) -> i64 {
-        let mut diff: i64 = 0;
+    ) -> i128 {
+        let mut diff: i128 = 0;
 
         let (width, height): (u32, u32) = target_img.dimensions();
 
@@ -301,8 +316,8 @@ impl RandomCircle {
         &self,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-    ) -> i64 {
-        let mut diff = 0i64;
+    ) -> i128 {
+        let mut diff: i128 = 0;
 
         let mut error = -self.radius;
         let mut x = self.radius;
@@ -354,8 +369,8 @@ impl RandomCircle {
         x: i32,
         y: i32,
         color: image::Rgba<u8>,
-    ) -> i64 {
-        let mut diff = 0i64;
+    ) -> i128 {
+        let mut diff: i128 = 0;
         diff += Self::score_diff_for_line_horizontal(
             target_img,
             current_img,

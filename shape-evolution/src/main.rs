@@ -28,5 +28,6 @@ fn main() {
         args.epochs,
         args.gens,
         &args.output_folder,
+        args.scale,
     );
 }
