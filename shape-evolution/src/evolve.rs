@@ -128,7 +128,7 @@ pub fn evolve(input_path: &str, num_epochs: u32, num_gens: u32, output_folder: &
         }
 
         // Save the output buffer periodically.
-        if i % 100 == 0 {
+        if i % 20 == 0 {
             output_img
                 .save(Path::new(output_folder).join(format!("out-{}-{}.jpg", i, score)))
                 .expect("Could not save image");
