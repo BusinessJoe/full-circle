@@ -1,7 +1,7 @@
 
-# Unnamed Circle Project
+# Full Circle
 
-Naming things is hard. This is a Rust project which takes an input image
+This is a Rust project which takes an input image
 and tried to recreate it by layering multicoloured circles on a blank
 canvas. 
 
