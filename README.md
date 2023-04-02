@@ -1,11 +1,8 @@
 
 # Full Circle
 
-This is a Rust project which stylizes an image in real-time. The program uses an evolutionary 
-algorithm which approximates the input by layering multicoloured circles on a blank
-canvas. [Check it out here](https://circles-lovat.vercel.app/).
+A prototype for an image-recognition game, this Rust project distorts an uploaded image by abstracting it through pixelation, using extremely coarse-grained circles at first. The program uses an evolutionary algorithm which approximates the input by reading the image’s colours and then layers matching circles on a blank canvas. The image is refined over time, making it more recognizable. [Check it out here](https://circles-lovat.vercel.app/).
 
-## Examples
+## Example
 
-![example gif with flowers](images/flowers/flowers.gif)
 ![example gif with red panda](images/red-panda/red-panda.gif)
