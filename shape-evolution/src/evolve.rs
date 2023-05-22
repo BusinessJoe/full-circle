@@ -1,6 +1,5 @@
 use crate::mutate::Mutate;
 use crate::random_shape::{RandomCircle, RandomShape};
-use crate::image_diff::image_diff;
 use image::RgbaImage;
 use rand;
 use std::iter;
@@ -57,7 +56,7 @@ pub fn epoch(
     let (imgx, imgy) = target_img.dimensions();
 
     let mut shapes: Vec<RandomCircle> = iter::repeat_with(|| RandomCircle::new(imgx, imgy))
-        .take(100)
+        .take(generation_size)
         .collect();
 
     for i in 0..num_gens {

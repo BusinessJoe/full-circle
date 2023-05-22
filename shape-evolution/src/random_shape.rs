@@ -225,6 +225,7 @@ impl RandomCircle {
     // We can use the bounds of the shape to crop the target and current image to a smaller area
     // where all the drawing and scoring can be done. This greatly improves performance on shapes
     // with smaller bounding boxes.
+    #[allow(unused)]
     fn score_small(
         &self,
         target_img: &image::RgbaImage,
@@ -250,6 +251,7 @@ impl RandomCircle {
 
     // On shapes with large bounding boxes, it's best to avoid cropping and simply draw and score
     // on the original target image.
+    #[allow(unused)]
     fn score_large(
         &self,
         target_img: &image::RgbaImage,

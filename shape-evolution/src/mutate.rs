@@ -13,7 +13,7 @@ pub trait BoundedMutate {
 }
 
 impl Mutate for random_shape::RandomCircle {
-    fn mutate(&self, mut rng: &mut rand::rngs::ThreadRng, factor: f64) -> Self {
+    fn mutate(&self, rng: &mut rand::rngs::ThreadRng, factor: f64) -> Self {
         Self {
             imgx: self.imgx,
             imgy: self.imgy,

@@ -93,7 +93,6 @@ fn correct_orientation(img: image::DynamicImage, orientation: u32) -> image::Dyn
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::GenericImage;
 
     fn testing_image() -> image::DynamicImage {
         let mut img: image::GrayImage = image::ImageBuffer::new(2, 2);

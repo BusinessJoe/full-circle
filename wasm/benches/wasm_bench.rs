@@ -1,9 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use image::RgbaImage;
 use shape_evolution::random_shape::RandomCircle;
-use shape_evolution::{evolve, evolve::sort_generation};
+use shape_evolution::evolve::sort_generation;
 use std::iter;
-use std::time::Duration;
 
 // Generate a population of 100 random circles with given radius
 fn randomize_generation(radius: i32, imgx: u32, imgy: u32) -> Vec<RandomCircle> {
@@ -13,12 +12,13 @@ fn randomize_generation(radius: i32, imgx: u32, imgy: u32) -> Vec<RandomCircle> 
         .collect()
 }
 
+#[allow(unused_must_use)]
 fn bench_sort_generation(
-    mut generation: Vec<RandomCircle>,
+    generation: Vec<RandomCircle>,
     target_img: &RgbaImage,
     current_img: &RgbaImage,
 ) {
-    generation = sort_generation(target_img, current_img, generation);
+    sort_generation(target_img, current_img, generation);
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
