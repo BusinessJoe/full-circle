@@ -404,7 +404,7 @@ mod tests {
         shape: &RandomCircle,
         target_img: &image::RgbaImage,
         current_img: &image::RgbaImage,
-        prev_score: i64,
+        prev_score: u128,
     ) {
         match shape.get_bounds() {
             Some(_b) => {}
@@ -418,7 +418,7 @@ mod tests {
         // The Bresenham algorithm isn't exactly the same as the others - we're happy with it being
         // within a 10% margin.
         assert!(
-            (score_small - score_bresenham).abs() as f64 / (score_small as f64) < 0.10,
+            (i128::try_from(score_small).unwrap() - score_bresenham).abs() as f64 / (score_small as f64) < 0.10,
             "{} !~= {}",
             score_small,
             score_bresenham
@@ -437,7 +437,7 @@ mod tests {
         let prev_score = image_diff(&target_img, &current_img);
 
         for shape in shapes {
-            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+            assert_scoring_equal(&shape, &target_img, &current_img, prev_score);
         }
     }
 
@@ -459,7 +459,7 @@ mod tests {
         let prev_score = image_diff(&target_img, &current_img);
 
         for shape in shapes {
-            assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+            assert_scoring_equal(&shape, &target_img, &current_img, prev_score);
         }
     }
 
@@ -478,7 +478,7 @@ mod tests {
             radius: 1,
             color: image::Rgba([255, 255, 255, 255]),
         };
-        assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+        assert_scoring_equal(&shape, &target_img, &current_img, prev_score);
     }
 
     #[test]
@@ -500,7 +500,7 @@ mod tests {
             height: imgy,
         };
 
-        assert_eq!(shape.get_bounds(1.0), Some(expected_bounds));
+        assert_eq!(shape.get_bounds(), Some(expected_bounds));
     }
 
     #[test]
@@ -519,8 +519,8 @@ mod tests {
             color: image::Rgba([255, 255, 255, 255]),
         };
         assert_eq!(
-            shape.score_small(&target_img, &current_img, 1.0, prev_score),
-            (imgx * imgy * 255 * 3) as i64
+            shape.score_small(&target_img, &current_img, prev_score),
+            (imgx * imgy * 255 * 3) as u128
         );
     }
 
@@ -542,8 +542,8 @@ mod tests {
             color: image::Rgba([255, 255, 255, 255]),
         };
         assert_eq!(
-            shape.score_large(&target_img, &current_img, 1.0),
-            (imgx * imgy * 255 * 3) as i64
+            shape.score_large(&target_img, &current_img),
+            (imgx * imgy * 255 * 3) as u128
         );
     }
 
@@ -562,6 +562,6 @@ mod tests {
             radius: 1000,
             color: image::Rgba([255, 255, 255, 255]),
         };
-        assert_scoring_equal(&shape, &target_img, &current_img, prev_score, 1.0);
+        assert_scoring_equal(&shape, &target_img, &current_img, prev_score);
     }
 }

@@ -32,6 +32,6 @@ mod tests {
         let black = RgbaImage::from_fn(imgx, imgy, |_x, _y| image::Rgba([0, 0, 0, 255]));
         let white = RgbaImage::from_fn(imgx, imgy, |_x, _y| image::Rgba([255, 255, 255, 255]));
 
-        assert_eq!(image_diff(&black, &white), (imgx * imgy * 255 * 3) as i64);
+        assert_eq!(image_diff(&black, &white), (imgx * imgy * 255 * 3) as u128);
     }
 }

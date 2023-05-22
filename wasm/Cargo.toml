@@ -6,10 +6,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "perf-test"
-path = "src/perf/perf.rs"
-
 [dependencies]
 shape-evolution = { path = "../shape-evolution" }
 wasm-bindgen = { version = "0.2.80", features = ["serde-serialize"] }
